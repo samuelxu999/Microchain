@@ -33,17 +33,17 @@ if  [ "start" == "$OPERATION" ]; then
 	## Check image type name
 	if [ "x86" == $IMAGE_TYPE ]; then
 		echo "Use x86 version"
-		IMAGE_FILE="samuelxu999/ecoledger_node:x86"
+		IMAGE_FILE="samuelxu999/microchain_node:x86"
 	elif [ "arm" == $IMAGE_TYPE ]; then
 		echo "Use armv7l version"
-		IMAGE_FILE="samuelxu999/ecoledger_node:armv7l"
+		IMAGE_FILE="samuelxu999/microchain_node:armv7l"
 	else
 		echo "Not support image version."
 		exit 0
 	fi
 	## prepare docker image
 	docker pull "$IMAGE_FILE"
-	docker tag "$IMAGE_FILE" ecoledger_node
+	docker tag "$IMAGE_FILE" microchain_node
 
 	# bootup container node
 	./run_node.sh start $CONTAINER_NAME
