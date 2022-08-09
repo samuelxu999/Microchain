@@ -1207,7 +1207,11 @@ class Validator():
 			# 2) set processed_head as current_head
 			self.processed_head = self.current_head
 
-			# 3) remove committed transactions in head block
+			## 3) ------------ Add committed txs into msg buffer for furture update -------
+			for tx_hash in self.processed_head['transactions']:
+				self.msg_buf.append([3, tx_hash, self.processed_head['hash']])
+
+			# 4) remove committed transactions in head block
 			pending_tx = []
 			for transaction in self.transactions:
 				if(transaction['hash'] not in self.processed_head['transactions']):
@@ -1217,7 +1221,7 @@ class Validator():
 
 			logger.info("Fix processed_head: {}    height: {}".format(self.processed_head['hash'],
 																		self.processed_head['height']) )
-			# 4) update chaininfo and save into local file
+			# 5) update chaininfo and save into local file
 			self.save_chainInfo()	
 
 	def add_dependency(self, hash_value, json_data, op_type=0):
