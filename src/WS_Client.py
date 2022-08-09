@@ -32,66 +32,6 @@ Microchain_client = Microchain_RPC(keystore="keystore",
 									keystore_net="keystore_net")
 
 
-def set_peerNodes(target_name, op_status=0, isBroadcast=False):
-	#--------------------------------------- load static nodes -------------------------------------
-	static_nodes = StaticNodes()
-	static_nodes.load_node()
-
-	list_address = []
-	print('List loaded static nodes:')
-	for node in list(static_nodes.nodes):
-		#json_node = TypesUtil.string_to_json(node)
-		json_node = node
-		list_address.append(json_node['node_url'])
-		print(json_node['node_name'] + '    ' + json_node['node_address'] + '    ' + json_node['node_url'])
-
-	#print(list_address)
-
-	#-------------- localhost ----------------
-	target_node = static_nodes.get_node(target_name)
-
-	if( target_node=={}):
-		return
-
-	target_address = target_node['node_url']
-	# print(target_address)
-
-	# Instantiate the Wallet by using key_dir: keystore_net
-	mywallet = Wallet('keystore_net')
-
-	# load accounts
-	mywallet.load_accounts()
-
-	#list account address
-	#print(mywallet.list_address())
-	json_account = mywallet.get_account(target_node['node_address'])
-	#print(json_account)
-
-	## ---------------- add and remove peer node --------------------
-	json_node = {}
-	if(json_account!=None):
-		json_node['address'] = json_account['address']
-		json_node['public_key'] = json_account['public_key']
-		json_node['node_url'] = target_node['node_url']
-
-	if(op_status==1): 
-		if(not isBroadcast):  
-			Microchain_client.add_node(target_address, json_node)
-		else:
-			Microchain_client.add_node(list_address, json_node, True)
-	if(op_status==2):
-		if(not isBroadcast):
-			Microchain_client.remove_node(target_address, json_node)
-		else:
-			Microchain_client.remove_node(list_address, json_node, True)
-
-	## display peering nodes
-	json_response=Microchain_client.get_peernodes(target_address)
-	nodes = json_response['nodes']
-	logger.info('Peer nodes:')
-	for node in nodes:
-		logger.info(node)
-
 # ====================================== validator test ==================================
 def Epoch_validator(target_address, op_status, tx_size, tx_count, phase_delay=BOUNDED_TIME):
 	'''
@@ -102,11 +42,16 @@ def Epoch_validator(target_address, op_status, tx_size, tx_count, phase_delay=BO
 
 	## S1: send test transactions
 	start_time=time.time()
-	for tps_round in range(tx_count):
-		if(op_status==1):
-				Microchain_client.send_transaction(target_address, tx_size, True)
-		else:
-			Microchain_client.launch_txs(tx_size)
+	# for tps_round in range(tx_count):
+	if(op_status==1):
+		## build a dummy json_tx for test.
+		json_tx={}
+		json_tx['name']='Samuel'
+		json_tx['age']=28
+		ret_msg = Microchain_client.submit_transaction(target_address, json_tx)
+		logger.info(ret_msg)
+	else:
+		Microchain_client.launch_txs(tx_count, tx_size)
 	exec_time=time.time()-start_time
 	ls_time_exec.append(format(exec_time*1000, '.3f'))
 
@@ -150,7 +95,7 @@ def Epoch_randomshare(phase_delay=BOUNDED_TIME):
 	ls_time_exec=[]
 
 	## get peer node information
-	peer_nodes = PeerNodes()
+	peer_nodes = Nodes(db_file = PEERS_DATABASE)
 	peer_nodes.load_ByAddress()
 
 	## 1) create shares
@@ -238,30 +183,31 @@ def Epoch_randomshare(phase_delay=BOUNDED_TIME):
 	## Save to *.log file
 	FileUtil.save_testlog('test_results', 'exec_time_randshare.log', str_time_exec)
 
+## ======== verify checkpoint at the end of epoch by voting process ===================
 def checkpoint_netInfo(target_address, isDisplay=False):
-	## get validators information in net.
+	# get validators information in net.
 	validator_info = Microchain_client.validator_getinfo(target_address, True)
 
 	fininalized_count = {}
 	justifized_count = {}
 	processed_count = {}
 
-	## Calculate all checkpoints count
+	## -------------  Calculate all checkpoints count -------------------
 	for validator in validator_info:
 		# Calculate finalized checkpoint count
-		if validator['highest_finalized_checkpoint']['hash'] not in fininalized_count:
-			fininalized_count[validator['highest_finalized_checkpoint']['hash']] = 0
-		fininalized_count[validator['highest_finalized_checkpoint']['hash']] += 1
+		if validator['highest_finalized_checkpoint'] not in fininalized_count:
+			fininalized_count[validator['highest_finalized_checkpoint']] = 0
+		fininalized_count[validator['highest_finalized_checkpoint']] += 1
 		
 		# Calculate justified checkpoint count
-		if validator['highest_justified_checkpoint']['hash'] not in justifized_count:
-			justifized_count[validator['highest_justified_checkpoint']['hash']] = 0
-		justifized_count[validator['highest_justified_checkpoint']['hash']] += 1
+		if validator['highest_justified_checkpoint'] not in justifized_count:
+			justifized_count[validator['highest_justified_checkpoint']] = 0
+		justifized_count[validator['highest_justified_checkpoint']] += 1
 
 		# Calculate processed checkpoint count
-		if validator['processed_head']['hash'] not in processed_count:
-			processed_count[validator['processed_head']['hash']] = 0
-		processed_count[validator['processed_head']['hash']] += 1
+		if validator['processed_head'] not in processed_count:
+			processed_count[validator['processed_head']] = 0
+		processed_count[validator['processed_head']] += 1
 
 	if(isDisplay):
 		logger.info("")
@@ -269,7 +215,7 @@ def checkpoint_netInfo(target_address, isDisplay=False):
 		logger.info("Justified checkpoints: {}\n".format(justifized_count))
 		logger.info("Processed checkpoints: {}\n".format(processed_count))
 
-	## search finalized checkpoint with maximum count
+	## -------------- search finalized checkpoint with maximum count -------------
 	checkpoint = ''
 	max_acount = 0
 	for _item, _value in fininalized_count.items():
@@ -281,7 +227,7 @@ def checkpoint_netInfo(target_address, isDisplay=False):
 		logger.info("Finalized checkpoint: {}    count: {}\n".format(finalized_checkpoint[0],
 															   finalized_checkpoint[1]))
 
-	## search finalized checkpoint with maximum count
+	## --------------- search finalized checkpoint with maximum count -------------
 	checkpoint = ''
 	max_acount = 0
 	for _item, _value in justifized_count.items():
@@ -293,7 +239,7 @@ def checkpoint_netInfo(target_address, isDisplay=False):
 		logger.info("Justified checkpoint: {}    count: {}\n".format(justified_checkpoint[0],
 															   justified_checkpoint[1]))
 
-	## search finalized checkpoint with maximum count
+	## -----------------search finalized checkpoint with maximum count -------------
 	checkpoint = ''
 	max_acount = 0
 	for _item, _value in processed_count.items():
@@ -305,6 +251,7 @@ def checkpoint_netInfo(target_address, isDisplay=False):
 		logger.info("Processed checkpoint: {}    count: {}\n".format(processed_checkpoint[0],
 															   processed_checkpoint[1]))
 
+	## build json date for return.
 	json_checkpoints={}
 	json_checkpoints['finalized_checkpoint'] = finalized_checkpoint
 	json_checkpoints['justified_checkpoint'] = justified_checkpoint
@@ -361,7 +308,7 @@ def count_vote_size(target_address):
 
 def validator_getStatus():
 	## Instantiate the PeerNodes and load all nodes information
-	peer_nodes = PeerNodes()
+	peer_nodes = Nodes(db_file = PEERS_DATABASE)
 	peer_nodes.load_ByAddress()
 	
 	ls_nodes = list(peer_nodes.get_nodelist())
@@ -386,13 +333,13 @@ def define_and_get_arguments(args=sys.argv[1:]):
 															3: randshare test")
 	parser.add_argument("--op_status", type=int, default=0, help="operational function mode")
 	parser.add_argument("--tx_size", type=int, default=128, help="Size of value in transaction.")
-	parser.add_argument("--tx_count", type=int, default=1, help="Transactions per second (TPS).")
+	parser.add_argument("--tx_thread", type=int, default=10, help="Transaction-threads count.")
 	parser.add_argument("--test_round", type=int, default=1, help="test evaluation round")
 	parser.add_argument("--wait_interval", type=int, default=1, help="break time between step.")
 	parser.add_argument("--target_address", type=str, default="0.0.0.0:8080", 
 						help="Test target address - ip:port.")
-	parser.add_argument("--set_peer", type=str, default="", 
-						help="set peer node, fromat: name@op. this is used for static_nodes setup.")
+	parser.add_argument("--data", type=str, default="", 
+						help="Input date for test.")
 	args = parser.parse_args(args=args)
 	return args
 
@@ -409,8 +356,8 @@ if __name__ == "__main__":
 
 	# set parameters
 	target_address = args.target_address
+	tx_thread = args.tx_thread
 	tx_size = args.tx_size
-	tx_count = args.tx_count
 	test_func = args.test_func
 	op_status = args.op_status
 	wait_interval = args.wait_interval
@@ -422,35 +369,29 @@ if __name__ == "__main__":
 
 	if(test_func == 0):
 		if(op_status == 1):
-			set_peer = args.set_peer
-			if(set_peer!=''):
-				name_op=set_peer.split('@')
-				# print(name_op[0], name_op[1])
-				# set_peerNodes('R2_pi4_4', 1, True)
-				set_peerNodes(name_op[0], int(name_op[1]), True)
-		elif(op_status == 2):
 			neighbors = Microchain_client.get_neighbors(target_address)
 			logger.info(neighbors)
-		elif(op_status == 3):
+		elif(op_status == 2):
 			peers = Microchain_client.get_peers(target_address)
 			logger.info(peers)
-		elif(op_status == 4):
+		elif(op_status == 3):
 			tasks = [Microchain_client.get_peers_info(target_address)]
 			loop = asyncio.get_event_loop()
 			done, pending = loop.run_until_complete(asyncio.wait(tasks))
 			for future in done:
 				logger.info(future.result())
 			loop.close()
-		elif(op_status == 5):
+		elif(op_status == 4):
 			# display peering nodes
 			json_response=Microchain_client.get_peernodes(target_address)
 			nodes = json_response['nodes']
 			logger.info('Peer nodes:')
 			for node in nodes:
 				logger.info(node)
-		elif(op_status == 6):
+		elif(op_status == 5):
 			# list check node result
-			json_response=Microchain_client.check_verifynode(target_address, '5af1d2232756fdff405682ec6f1b785f645cf351')
+			node_address = args.data
+			json_response=Microchain_client.check_verifynode(target_address, node_address)
 			node = json_response['node']
 			logger.info('Check nodes:')
 			logger.info(node)
@@ -464,7 +405,7 @@ if __name__ == "__main__":
 	elif(test_func == 1):
 		for x in range(test_run):
 			logger.info("Test run:{}".format(x+1))
-			Epoch_validator(target_address, op_status, tx_size, tx_count, 5)
+			Epoch_validator(target_address, op_status, tx_size, tx_thread, 5)
 			time.sleep(wait_interval)
 
 		# get checkpoint after execution
@@ -473,26 +414,45 @@ if __name__ == "__main__":
 			logger.info("{}: {}    {}".format(_item, _value[0], _value[1]))
 
 	elif(test_func == 2):
-		if(op_status == 1):
-			for tps_round in range(tx_count):
-				Microchain_client.send_transaction(target_address, tx_size, False)
-		elif(op_status == 10):
-			for tps_round in range(tx_count):
-				Microchain_client.launch_txs(tx_size)
+		if(op_status == 100):
+			## build a dummy json_tx for test.
+			json_tx={}
+			json_tx['name']='Samuel'
+			json_tx['age']=28
+			ret_msg = Microchain_client.submit_transaction(target_address, json_tx)
+			logger.info(ret_msg)
+		elif(op_status == 101):
+			## throughput test based on tps
+			Microchain_client.launch_txs(tx_thread, tx_size)
 		elif(op_status == 2):
 			Microchain_client.start_mining(target_address, True)
 		elif(op_status == 3):
 			Microchain_client.check_head()
 		elif(op_status == 4):
 			Microchain_client.start_voting(target_address, True)
-		elif(op_status == 11):
+		elif(op_status == 210):
 			transactions = Microchain_client.get_transactions(target_address)
 			logger.info(transactions)
-		elif(op_status == 12):
+		elif(op_status == 211):
+			tx_hash = args.data
+			list_tx = Microchain_client.query_transaction(target_address, tx_hash)
+			for tx in list_tx:
+				tx_size=len( tx[2].encode('utf-8'))
+				logger.info("{}, committed in block:{}, size:{}.\n".format(TypesUtil.string_to_json(tx[2]),
+																tx[3], tx_size))
+		elif(op_status == 212):
+			block_hash = args.data
+			json_block = Microchain_client.query_block(target_address, block_hash)
+			if(json_block!={}):
+				block_size = len( TypesUtil.json_to_string(json_block).encode('utf-8'))
+				tx_count = len(json_block['transactions'])
+				logger.info("{}, size:{}, tx_count:{}".format(json_block, 
+														block_size, tx_count))
+		elif(op_status == 22):
 			disp_chaindata(target_address, True)
-		elif(op_status == 13):
+		elif(op_status == 23):
 			count_tx_size(target_address)
-		elif(op_status == 14):
+		elif(op_status == 212):
 			count_vote_size(target_address)
 		elif(op_status == 9):
 			Microchain_client.run_consensus(target_address, True, True)
@@ -502,20 +462,10 @@ if __name__ == "__main__":
 			json_checkpoints = checkpoint_netInfo(target_address, False)
 			for _item, _value in json_checkpoints.items():
 				logger.info("{}: {}    {}".format(_item, _value[0], _value[1]))
-	else:
-		# host_address='ceeebaa052718c0a00adb87de857ba63608260e9'
-		# cache_fetch_share(target_address)
-		# verify_share(host_address)
-		# cache_recovered_shares(target_address)
-		# recovered_shares(host_address)
-		# print(create_randshare(target_address))
-		# cache_vote_shares(target_address)
-		# print(verify_vote_shares())
-		# vote_randshare(target_address)
-
+	elif(test_func == 3):
 		for x in range(test_run):
 			logger.info("Test run:{}".format(x+1))
 			Epoch_randomshare()
 			time.sleep(wait_interval)
-	
-		# pass
+	else:
+		logger.info("Unknown test_func.")

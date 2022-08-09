@@ -22,8 +22,6 @@ from urllib.parse import urlparse
 from uuid import uuid4
 import copy
 
-from merklelib import MerkleTree, jsonify as merkle_jsonify
-
 from utils.utilities import FileUtil, TypesUtil, FuncUtil
 from network.wallet import Wallet
 from consensus.transaction import Transaction
@@ -92,34 +90,38 @@ class Validator():
 		self.chain_db = DataManager(CHAIN_DATA_DIR, BLOCKCHAIN_DATA)
 		self.chain_db.create_table(CHAIN_TABLE)
 
-		#Create genesis block
+		## New database manager to manage tx data
+		self.tx_db = DataManager(CHAIN_DATA_DIR, TX_DATA)
+		self.tx_db.create_tx_table(TX_TABLE)
+
+		## Create genesis block
 		genesis_block = Block()
 		json_data = genesis_block.to_json()
 
-		# no local chain data, generate a new validator information
+		## no local chain data, generate a new validator information
 		if( self.chain_db.select_block(CHAIN_TABLE)==[] ):
 			#add genesis_block as 2-finalized
 			self.add_block(json_data, 2)
 		
-		# new chain buffer
+		## new chain buffer
 		self.chain = []
 
-		# new transaction pool
+		## new transaction pool
 		self.transactions = []                            
 
-		# votes pool Map {sender -> vote_db object}
+		## votes pool Map {sender -> vote_db object}
 		self.votes = {}
 
-		#choose consensus algorithm
+		## choose consensus algorithm
 		self.consensus = consensus
 
-		#-------------- load chain info ---------------
+		## -------------- load chain info ---------------
 		chain_info = self.load_chainInfo()
 		if(chain_info == None):
 			#Generate random number to be used as node_id
 			self.node_id = str(uuid4()).replace('-', '')
 
-			# initialize pending data buffer
+			## initialize pending data buffer
 			self.block_dependencies = {}
 			self.vote_dependencies = {}
 			self.processed_head = json_data
@@ -127,7 +129,7 @@ class Validator():
 			self.highest_finalized_checkpoint = json_data
 			#self.votes = {}
 			self.vote_count = {}
-			# update chain info
+			## update chain info
 			self.save_chainInfo()
 		else:
 			#Generate random number to be used as node_id
@@ -140,16 +142,16 @@ class Validator():
 			#self.votes = chain_info['votes']
 			self.vote_count = chain_info['vote_count']
 		
-		# point current head to processed_head
+		## point current head to processed_head
 		self.current_head = self.processed_head
 
-		# set total stake and number of validators
+		## set total stake and number of validators
 		ls_nodes=list(self.peer_nodes.get_nodelist())
-		# set sum_stake is peer nodes count
+		## set sum_stake is peer nodes count
 		self.sum_stake = len(ls_nodes)
-		# set committee_size as peer nodes count 
+		## set committee_size as peer nodes count 
 		self.committee_size = len(ls_nodes)
-		# set block_epoch given args
+		## set block_epoch given args
 		self.block_epoch = block_epoch;
 
 		''' 
@@ -157,13 +159,13 @@ class Validator():
 		The process_msg() method will be started and it will run in the background
 		until the application exits.
 		'''
-		# new buffer list to process received message by on_receive().
+		## new buffer list to process received message by on_receive().
 		self.msg_buf = []
-		# define a thread to handle received messages by executing process_msg()
+		## define a thread to handle received messages by executing process_msg()
 		self.rev_thread = threading.Thread(target=self.process_msg, args=())
-		# Set as daemon thread
+		## Set as daemon thread
 		self.rev_thread.daemon = True
-		# Start the daemonized method execution
+		## Start the daemonized method execution
 		self.rev_thread.start()   
 
 		''' 
@@ -171,20 +173,20 @@ class Validator():
 		The exec_consensus() method will be started and it will run in the background
 		until the application exits.
 		'''
-		# the flag used to trigger consensus protocol execution.
+		## the flag used to trigger consensus protocol execution.
 		self.runConsensus = False
-		# set pause threshold for check synchronization
+		## set pause threshold for check synchronization
 		self.pause_epoch = pause_epoch
-		# set delay time between operations in consensus protocol.
+		## set delay time between operations in consensus protocol.
 		self.phase_delay = phase_delay
-		# define a thread to handle received messages by executing process_msg()
+		## define a thread to handle received messages by executing process_msg()
 		self.consensus_thread = threading.Thread(target=self.exec_consensus, args=())
-		# Set as daemon thread
+		## Set as daemon thread
 		self.consensus_thread.daemon = True
-		# Start the daemonized method execution
+		## Start the daemonized method execution
 		self.consensus_thread.start()
 
-		# ------------------------ Instantiate the Microchain_RPC ----------------------------------
+		## ------------------------ Instantiate the Microchain_RPC ----------------------------------
 		self.RPC_client = Microchain_RPC(keystore="keystore", 
 											keystore_net="keystore_net")   
 		self.frequency_peers = frequency_peers
@@ -197,6 +199,7 @@ class Validator():
 		## Start the daemonized method execution
 		self.peers_thread.start()
 
+	## =================================== daemon function ================================
 	def refresh_peers(self):
 		'''
 		daemon thread function: handle message and save into local database
@@ -309,10 +312,13 @@ class Validator():
 				# ============= Choose a message from buffer and process it ==================
 				msg_data = self.msg_buf[0]
 				if(msg_data[0]==1):
-					self.add_block(msg_data[1], msg_data[2])
-				
-				if(msg_data[0]==2):
+					self.add_block(msg_data[1], msg_data[2])			
+				elif(msg_data[0]==2):
 					VoteCheckPoint.add_voter_data(msg_data[1], msg_data[2])
+				elif(msg_data[0]==3):
+					self.commit_tx(msg_data[1], msg_data[2])
+				else:
+					self.add_tx(msg_data[1])
 				
 				self.msg_buf.remove(msg_data)
 			except:
@@ -418,6 +424,38 @@ class Validator():
 																				self.highest_finalized_checkpoint['height']) )
 
 
+	## =================================== tx operation ===================================
+	def add_tx(self, json_tx):
+		'''
+		Database operation: add verified tx to local ledger database
+		'''
+		# if tx not existed, add tx to database
+		if( self.tx_db.select_tx(TX_TABLE, json_tx['hash'])==[] ):
+			self.tx_db.insert_tx(TX_TABLE,	json_tx['hash'], 
+								TypesUtil.json_to_string(json_tx))
+
+	def commit_tx(self, tx_hash, block_hash):
+		'''
+		Database operation: update block_hash to fix tx on local tx database.
+		'''
+		self.tx_db.update_tx(TX_TABLE, tx_hash, block_hash)
+
+	def query_tx(self, tx_hash,  tx_num=10):
+		'''
+		Query operation: select a tx as json given tx_hash
+		'''
+		ret_tx = []
+
+		list_tx = self.tx_db.select_tx(TX_TABLE, tx_hash)
+		txs_size = len(list_tx)
+		if(txs_size<tx_num):
+			ret_tx = list_tx
+		else:
+			ret_tx = list_tx[txs_size-tx_num:]
+
+		return ret_tx
+
+	## =================================== block operation =====================================
 	def add_block(self, json_block, status=0):
 		'''
 		Database operation: add verified block to local chain data
@@ -437,9 +475,26 @@ class Validator():
 		'''
 		Database operation: select a block as json given block_hash
 		'''
-		str_block = self.chain_db.select_block(CHAIN_TABLE, block_hash)[0][2]
-		return TypesUtil.string_to_json(str_block)
+		ls_block = self.chain_db.select_block(CHAIN_TABLE, block_hash)
+		if(len(ls_block)!=0):
+			str_block = ls_block[-1][2]
+			return TypesUtil.string_to_json(str_block)
+		else:
+			return {}
 
+	def query_block(self, block_hash):
+		'''
+		Query operation: select a block with status as json given block_hash
+		'''
+		ls_block = self.chain_db.select_block(CHAIN_TABLE, block_hash)
+		if(len(ls_block)!=0):
+			json_block = TypesUtil.string_to_json(ls_block[-1][2])
+			json_block['status'] = ls_block[-1][3]
+			return json_block
+		else:
+			return {}
+
+	## =================================== node operation ===================================
 	def get_node(self, node_address):
 		'''
 		Check node: select a node from node buffers given node address
@@ -489,7 +544,6 @@ class Validator():
 		return json_node
 
 
-
 	def valid_round(self, node_address):
 		'''
 		Verify round operation: check if a node is valid given current block height
@@ -515,17 +569,25 @@ class Validator():
 		## return verify result	
 		return sort_address[rid]==node_address
 
-	def load_chain(self):
+	def load_chain(self, block_num=10):
 		'''
-		Database operation: Load chain data from local database
+		Database operation: Load latest block_num of chain data
 		'''
 		ls_chain=self.chain_db.select_block(CHAIN_TABLE)
-		self.chain = []
-		for block in ls_chain:
+		chain_size = len(ls_chain)
+
+		if(chain_size<block_num):
+			ret_chain = ls_chain
+		else:
+			ret_chain = ls_chain[chain_size-block_num:]
+		
+		json_blocks = []
+		for block in ret_chain:
 			json_data = TypesUtil.string_to_json(block[2])
-			if( json_data['hash'] not in self.chain):
+			if( json_data['hash'] not in json_blocks):
 				json_data['status']=block[3]
-				self.chain.append(json_data)
+				json_blocks.append(json_data)
+		return json_blocks
 
 	def save_chainInfo(self):
 		"""
@@ -533,9 +595,9 @@ class Validator():
 		"""
 		chain_info = {}
 		chain_info['node_id'] = self.node_id
-		chain_info['processed_head'] = self.processed_head
-		chain_info['highest_justified_checkpoint'] = self.highest_justified_checkpoint
-		chain_info['highest_finalized_checkpoint'] = self.highest_finalized_checkpoint
+		chain_info['processed_head'] = self.processed_head['hash']
+		chain_info['highest_justified_checkpoint'] = self.highest_justified_checkpoint['hash']
+		chain_info['highest_finalized_checkpoint'] = self.highest_finalized_checkpoint['hash']
 		chain_info['block_dependencies'] = self.block_dependencies
 		chain_info['vote_dependencies'] = self.vote_dependencies
 		#chain_info['votes'] = self.votes
@@ -550,7 +612,11 @@ class Validator():
 		Config file operation: load validator information from static json file
 		"""
 		if(os.path.isfile(CHAIN_DATA_DIR+'/'+CHAIN_INFO)):
-		    return FileUtil.JSON_load(CHAIN_DATA_DIR+'/'+CHAIN_INFO)
+			chain_info = FileUtil.JSON_load(CHAIN_DATA_DIR+'/'+CHAIN_INFO)
+			chain_info['processed_head'] = self.get_block(chain_info['processed_head'])
+			chain_info['highest_justified_checkpoint'] = self.get_block(chain_info['highest_justified_checkpoint'])
+			chain_info['highest_finalized_checkpoint'] = self.get_block(chain_info['highest_finalized_checkpoint'])
+			return chain_info
 		else:
 			return None
 
@@ -561,9 +627,9 @@ class Validator():
 		validator_info = {}
 		validator_info['node_id'] = self.node_id
 		validator_info['committee_size'] = self.committee_size
-		validator_info['processed_head'] = self.processed_head
-		validator_info['highest_justified_checkpoint'] = self.highest_justified_checkpoint
-		validator_info['highest_finalized_checkpoint'] = self.highest_finalized_checkpoint		
+		validator_info['processed_head'] = self.processed_head['hash']
+		validator_info['highest_justified_checkpoint'] = self.highest_justified_checkpoint['hash']
+		validator_info['highest_finalized_checkpoint'] = self.highest_finalized_checkpoint['hash']		
 		validator_info['vote_count'] = self.vote_count
 
 		return validator_info
@@ -586,10 +652,12 @@ class Validator():
 			@ return: True or False
 		"""
 		## ====================== rebuild transaction ==========================
-		dict_transaction = Transaction.get_dict(json_transaction['sender_address'], 
+		dict_transaction = Transaction.get_dict(json_transaction['hash'],
+												json_transaction['sender_address'], 
 												json_transaction['recipient_address'],
 												json_transaction['time_stamp'],
 												json_transaction['value'])
+		
 		## get signature (string) from transaction_json
 		sign_str = TypesUtil.hex_to_string(json_transaction['signature'])
 
@@ -620,13 +688,23 @@ class Validator():
 		Args:
 			@ json_block: return mined block
 		"""
-		# remove committed transactions in head block
-		head_block = self.current_head
-		for transaction in head_block['transactions']:
-			if(transaction in self.transactions):
-				self.transactions.remove(transaction)
+		## set head as last block and used for new block proposal process ----
+		last_block = self.processed_head
+		
+		## Convert json last_block to Block object
+		parent_block = Block.json_to_block(last_block)
 
-		# commit transactions based on COMMIT_TRANS
+		## ------------- remove committed transactions in head block -------------
+		head_block = self.current_head
+		pending_tx = []
+		for transaction in self.transactions:
+			## search pending txs in head_block.
+			if(transaction['hash'] not in head_block['transactions']):
+				pending_tx.append(transaction)
+		## only keep uncommitted txs.
+		self.transactions = copy.copy(pending_tx)
+
+		## ------ choose commit transactions based on COMMIT_TRANS ----------------
 		commit_transactions = []
 		if( len(self.transactions)<=COMMIT_TRANS ):
 			commit_transactions = copy.copy(self.transactions)
@@ -634,42 +712,40 @@ class Validator():
 		else:
 			commit_transactions = copy.copy(self.transactions[:COMMIT_TRANS])
 
-		# set head as last block and used for new block proposal process
-		last_block = self.processed_head
+		## --------- only save tx_hash to block['transactions'] -------------------
+		ls_tx_hash = []
+		for tx in commit_transactions:
+			ls_tx_hash.append(tx['hash'])
 
-		block_data = {'height': last_block['height'],
-					'previous_hash': last_block['previous_hash'],
-					'transactions': last_block['transactions'],
-					'merkle_root': last_block['merkle_root'],
-					'nonce': last_block['nonce']}
+		## a) ---------- calculate merkle tree root hash of ls_tx_hash ------
+		merkle_root = FuncUtil.merkle_root(ls_tx_hash)
 
-		parent_block = Block.json_to_block(last_block)
-
-		# execute mining task given consensus algorithm
+		## b) ----------- execute mining task given consensus algorithm ------
 		if(self.consensus==ConsensusType.PoW):
 			# mining new nonce
-			nonce = POW.proof_of_work(block_data, commit_transactions)
-			new_block = Block(parent_block, commit_transactions, nonce)
+			nonce = POW.proof_of_work(last_block['hash'], merkle_root)
+			new_block = Block(parent_block, merkle_root, ls_tx_hash, nonce)
 		elif(self.consensus==ConsensusType.PoS):
 			## get host address
 			host_account = None
 			if(self.wallet.accounts!=0):
 				host_account = self.wallet.accounts[0]
-			# propose new block: 1) given PoS algorithm or 2) valid round
-			if( (POS.proof_of_stake(block_data, commit_transactions, self.node_id, 
+			## propose new block given condition: 1) PoS algorithm or 2) valid round
+			if( (POS.proof_of_stake(last_block['hash'], merkle_root, self.node_id, 
 									TEST_STAKE_WEIGHT, self.sum_stake )!=0) or
 									(self.valid_round(host_account['address'])==True) ):
-				new_block = Block(parent_block, commit_transactions, self.node_id)	
+				## a) generate candidate block with transactions
+				new_block = Block(parent_block, merkle_root, ls_tx_hash, self.node_id)	
 			else:
-				# generate empty block without transactions
-				new_block = Block(parent_block)	
+				## b) generate empty block without transactions
+				new_block = Block(parent_block)		
 		else:
 			# generate empty block without transactions
 			new_block = Block(parent_block)				
 
 		json_block = new_block.to_json()
 
-		# add sender address and signature
+		# c) --------------- add sender address and signature -----------------
 		if(self.wallet.accounts!=0):
 			sender = self.wallet.accounts[0]
 			sign_data = new_block.sign(sender['private_key'], 'samuelxu999')
@@ -699,7 +775,7 @@ class Validator():
 			logger.info("Invalid sender: {}".format(current_block['sender_address']))
 			return False
 
-		# rebuild block object given json data
+		## rebuild block object given json data
 		obj_block = Block.json_to_block(current_block)
 		# if check signature failed, drop block
 		if( not obj_block.verify(sender_node['public_key'], 
@@ -713,32 +789,25 @@ class Validator():
 			logger.info("Invalid block with empty txs from sender: {}".format(current_block['sender_address']))
 			return False
 
-		# b) verify if transactions list has the same merkel root hash as in block['merkle_root']
-		dict_transactions = Transaction.json_to_dict(current_block['transactions'])
+		## b) verify if transactions list has the same merkel root hash as in block['merkle_root']
+		ls_tx_hash = current_block['transactions']
 
-		# # build a Merkle tree for that list
-		tx_HMT = MerkleTree(dict_transactions, FuncUtil.hashfunc_sha256)
+		## ---------- calculate merkle tree root hash of dict_transactions ------
+		merkle_root = FuncUtil.merkle_root(ls_tx_hash)
 
-		# calculate merkle tree root hash
-		if(len(tx_HMT)==0):
-			merkle_root = 0
-		else:
-			tree_struct=merkle_jsonify(tx_HMT)
-			json_tree = TypesUtil.string_to_json(tree_struct)
-			merkle_root = json_tree['name']
-
+		## verify if merkle_root is the same as block data
 		if(merkle_root!=current_block['merkle_root']):
 			logger.info("Transactions merkel tree root verify fail. Block: {}  sender: {}".format(current_block['hash'],current_block['sender_address']))
 			return False
 
 		# c) execute valid proof task given consensus algorithm
 		if(self.consensus==ConsensusType.PoW):
-			if( not POW.valid_proof(current_block['merkle_root'], current_block['previous_hash'], current_block['nonce']) ):
+			if( not POW.valid_proof(current_block['previous_hash'], current_block['merkle_root'], current_block['nonce']) ):
 				logger.info("PoW verify proof fail. Block: {}  sender: {}".format(current_block['hash'],current_block['sender_address']))
 				return False
 		elif(self.consensus==ConsensusType.PoS):
 			## check if a valid PoS proof
-			if( not POS.valid_proof(current_block['merkle_root'], current_block['previous_hash'], current_block['nonce'], 
+			if( not POS.valid_proof(current_block['previous_hash'], current_block['merkle_root'], current_block['nonce'], 
 									TEST_STAKE_WEIGHT, self.sum_stake) ):
 				logger.info("PoS verify proof fail. Block: {}  sender: {}".format(current_block['hash'],current_block['sender_address']))
 				## If not a valid PoS proof, then check if sender has a valid round proof
@@ -786,26 +855,15 @@ class Validator():
 			@ verify_result: True or False
 		'''
 		verify_result = True
-		for transaction_data in transactions:
-			#print(transaction_data)
-			# ====================== rebuild transaction ==========================
-			dict_transaction = Transaction.get_dict(transaction_data['sender_address'], 
-			                                    transaction_data['recipient_address'],
-			                                    transaction_data['time_stamp'],
-			                                    transaction_data['value'])
 
-			sign_str = TypesUtil.hex_to_string(transaction_data['signature'])
+		tx_pool = []
+		for tx in self.transactions:
+			tx_pool.append(tx['hash'])
 
-			# get node data from self.peer_nodes buffer
-			sender_node=self.get_node(transaction_data['sender_address'])
-
-			# ====================== verify transaction ==========================
-			if(sender_node!={}):
-			    sender_pk= sender_node['public_key']
-			    verify_result = Transaction.verify(sender_pk, sign_str, dict_transaction)
-			else:
+		## each tx_hash to check if it's valid in tx_pool
+		for tx_hash in transactions:
+			if(tx_hash not in tx_pool):
 				verify_result = False
-			if(not verify_result):
 				break
 		return verify_result
 
@@ -890,6 +948,10 @@ class Validator():
 		'''
 		## ====================== verify transaction ==========================
 		verify_result = self.valid_transaction(json_tran)
+
+		## add valid tx to self.msg_buf
+		if(verify_result):
+			self.msg_buf.append([0, json_tran])
 
 		return verify_result
 
@@ -1073,10 +1135,8 @@ class Validator():
 	def check_processed_head(self, new_block):
 		'''
 		Reorganize the processed_head to stay on the chain with the highest justified checkpoint.
-
 		If we are on wrong chain, reset the head to be the highest descendent
 		among the chains containing the highest justified checkpoint.
-
 		Args:
 		    new_block: latest block processed.
 		'''
@@ -1085,10 +1145,10 @@ class Validator():
 		if self.is_ancestor(self.highest_justified_checkpoint, head_block):
 			if(self.consensus==ConsensusType.PoS):
 				# get proof value used for choose current_head
-				new_proof=POS.get_proof(new_block['merkle_root'], 
-								new_block['previous_hash'], new_block['nonce'],self.sum_stake)
-				head_proof=POS.get_proof(head_block['merkle_root'], 
-								head_block['previous_hash'], head_block['nonce'],self.sum_stake)
+				new_proof=POS.get_proof(new_block['previous_hash'], new_block['merkle_root'], 
+										new_block['nonce'], self.sum_stake)
+				head_proof=POS.get_proof(head_block['previous_hash'], head_block['merkle_root'], 
+										head_block['nonce'], self.sum_stake)
 				# head is genesis block or new_block have smaller proof value than current head
 				logger.info( "new block sender:  {}".format(new_block['sender_address']))
 				logger.info( "head proof:        {} -- new proof:        {}".format(head_proof, new_proof) )
@@ -1119,7 +1179,6 @@ class Validator():
 				self.processed_head = new_block
 				logger.info("Fix processed_head: {}    height: {}".format(self.processed_head['hash'],
 																			self.processed_head['height']) )
-			#self.main_chain_size += 1
 
 	def fix_processed_head(self):
 		'''
@@ -1149,9 +1208,13 @@ class Validator():
 			self.processed_head = self.current_head
 
 			# 3) remove committed transactions in head block
-			for transaction in self.processed_head['transactions']:
-				if(transaction in self.transactions):
-					self.transactions.remove(transaction)
+			pending_tx = []
+			for transaction in self.transactions:
+				if(transaction['hash'] not in self.processed_head['transactions']):
+					pending_tx.append(transaction)
+					# self.transactions.remove(transaction)
+			self.transactions = copy.copy(pending_tx)
+
 			logger.info("Fix processed_head: {}    height: {}".format(self.processed_head['hash'],
 																		self.processed_head['height']) )
 			# 4) update chaininfo and save into local file

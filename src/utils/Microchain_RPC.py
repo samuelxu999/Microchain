@@ -37,40 +37,10 @@ class TxsThread(threading.Thread):
 	#The run() method is the entry point for a thread.
 	def run(self):
 		## set parameters based on argv
-		tx_sender = self.argv[0]
-		mypeer_nodes = self.argv[1]
-		tx_size = self.argv[2]
+		node_url = self.argv[0]
+		json_tx = self.argv[1]
 
-		sender_address = tx_sender['address']
-		sender_private_key = tx_sender['private_key']
-		## set recipient_address as default value: 0
-		recipient_address = '0'
-		time_stamp = time.time()
-
-		# using random byte string for value of tx
-		hex_value = TypesUtil.string_to_hex(os.urandom(tx_size))
-
-		mytransaction = Transaction(sender_address, sender_private_key, recipient_address, time_stamp, hex_value)
-
-		# sign transaction
-		sign_data = mytransaction.sign('samuelxu999')
-
-		# verify transaction
-		dict_transaction = Transaction.get_dict(mytransaction.sender_address, 
-		                                        mytransaction.recipient_address,
-		                                        mytransaction.time_stamp,
-		                                        mytransaction.value)
-
-		## --------------------- send transaction --------------------------------------
-		transaction_json = mytransaction.to_json()
-		transaction_json['signature']=TypesUtil.string_to_hex(sign_data)
-
-		node_info = mypeer_nodes.load_ByAddress(sender_address)
-		json_nodes = TypesUtil.string_to_json(list(mypeer_nodes.get_nodelist())[0])
-
-		## trigger broadcast_tx on tx_sender
-		SrvAPI.POST('http://'+json_nodes['node_url']+'/test/transaction/broadcast', 
-								transaction_json)
+		SrvAPI.POST('http://'+node_url+'/test/transaction/submit', json_tx)
 
 ## --------------------------------- Microchain_RPC ------------------------------------------
 class Microchain_RPC(object):
@@ -123,17 +93,28 @@ class Microchain_RPC(object):
 				info_list.append(json_response)
 		return info_list
 
-	def launch_txs(self, tx_size):
+	def launch_txs(self, thread_num, tx_size):
 		## Instantiate mypeer_nodes using deepcopy of self.peer_nodes
 		mypeer_nodes = copy.deepcopy(self.peer_nodes)
+		list_nodes = list(mypeer_nodes.get_nodelist())
+		len_nodes = len(list_nodes)
 
-		# Create thread pool
+		## Create thread pool
 		threads_pool = []
 
-		## 1) for each account to send tx 
-		for sender in self.wallet_net.accounts:
+		## 1) build tx_thread for each task
+		for idx in range(thread_num):
+			## random choose a peer node. 
+			node_idx = random.randint(0,len_nodes-1)
+			node_url = TypesUtil.string_to_json(list_nodes[node_idx])['node_url']
+
+			## using random byte string for value of tx; value can be any bytes string.
+			json_tx={}
+			# json_tx['id']= TypesUtil.string_to_json(list_nodes[node_idx])['address']
+			json_tx['data']=TypesUtil.string_to_hex(os.urandom(tx_size)) 
+
 			## Create new threads for tx
-			p_thread = TxsThread( [sender, mypeer_nodes, tx_size] )
+			p_thread = TxsThread( [node_url, json_tx] )
 
 			## append to threads pool
 			threads_pool.append(p_thread)
@@ -141,54 +122,27 @@ class Microchain_RPC(object):
 			## The start() method starts a thread by calling the run method.
 			p_thread.start()
 
-		# 2) The join() waits for all threads to terminate.
+		## 2) The join() waits for all threads to terminate.
 		for p_thread in threads_pool:
 			p_thread.join()
 
-		tx_count = len(threads_pool)
-		logger.info('launch transactions: tx size {}    total count: {}'.format(tx_size, tx_count))
+		logger.info('launch txs, number:{}, size: {}'.format(thread_num, tx_size))
 
-	def send_transaction(self, target_address, tx_size=1, isBroadcast=False):
-		##----------------- build test transaction --------------------
-		sender = self.wallet.accounts[0]
-		sender_address = sender['address']
-		sender_private_key = sender['private_key']
-		## set recipient_address as default value: 0
-		recipient_address = '0'
-		time_stamp = time.time()
-		
-		## using random byte string for value of tx; value can be any bytes string.
-		hex_value = TypesUtil.string_to_hex(os.urandom(tx_size))
-
-		mytransaction = Transaction(sender_address, sender_private_key, recipient_address, time_stamp, hex_value)
-
-		# sign transaction
-		sign_data = mytransaction.sign('samuelxu999')
-
-		# verify transaction
-		dict_transaction = Transaction.get_dict(mytransaction.sender_address, 
-												mytransaction.recipient_address,
-												mytransaction.time_stamp,
-												mytransaction.value)
-		#send transaction
-		transaction_json = mytransaction.to_json()
-		transaction_json['signature']=TypesUtil.string_to_hex(sign_data)
-		# print(transaction_json)
-		if(not isBroadcast):
-		    json_response=SrvAPI.POST('http://'+target_address+'/test/transaction/verify', 
-		    						transaction_json)
-		else:
-		    json_response=SrvAPI.POST('http://'+target_address+'/test/transaction/broadcast', 
-		                            transaction_json)
-		logger.info(json_response)
+	def submit_transaction(self, target_address, tx_json):
+		json_response=SrvAPI.POST('http://'+target_address+'/test/transaction/submit', tx_json)
+		return json_response
 
 	def get_transactions(self, target_address):
 		json_response=SrvAPI.GET('http://'+target_address+'/test/transactions/get')
 		transactions = json_response['transactions']		
 		return transactions
 
-	def query_transaction(self, target_address, tx_json):
-		json_response=SrvAPI.GET('http://'+target_address+'/test/transaction/query', tx_json)
+	def query_transaction(self, target_address, tx_hash):
+		json_response=SrvAPI.GET('http://'+target_address+'/test/transaction/query', tx_hash)
+		return json_response
+
+	def query_block(self, target_address, block_hash):
+		json_response=SrvAPI.GET('http://'+target_address+'/test/block/query', block_hash)
 		return json_response
 
 	def start_mining(self, target_address, isBroadcast=False):

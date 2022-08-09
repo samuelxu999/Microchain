@@ -10,9 +10,6 @@ Created on June.18, 2019
 '''
 
 from collections import OrderedDict
-
-from merklelib import MerkleTree, jsonify as merkle_jsonify
-
 from utils.utilities import TypesUtil, FuncUtil
 from cryptolib.crypto_rsa import Crypto_RSA
 from utils.configuration import *
@@ -24,11 +21,12 @@ class Block(object):
 
 	Args:
 	    parent: 		parent block
+	    merkle_root: 	merkle tree root (hash) of transactions.
 	    transactions: 	committed transactions in new block.
 	    nonce: 			nonce proof to meet difficult level.
 	"""
 
-	def __init__(self, parent=None, transactions=[], nonce = 0):
+	def __init__(self, parent=None, merkle_root=0, transactions=[], nonce = 0):
 		"""A block contains the following arguments:
 
 		self.hash: hash of the block
@@ -45,22 +43,9 @@ class Block(object):
 			self.height = parent.height+1
 			self.previous_hash = parent.hash
 		
+		self.merkle_root = merkle_root
 		self.transactions = transactions
 		self.nonce = nonce
-
-		# convert to a order-dict transactions list
-		dict_transactions = Transaction.json_to_dict(self.transactions)
-		
-		# build a Merkle tree for that dict_transactions
-		tx_HMT = MerkleTree(dict_transactions, FuncUtil.hashfunc_sha256)
-
-		# calculate merkle tree root hash
-		if(len(tx_HMT)==0):
-			self.merkle_root = 0
-		else:
-			tree_struct=merkle_jsonify(tx_HMT)
-			json_tree = TypesUtil.string_to_json(tree_struct)
-			self.merkle_root = json_tree['name']
 
 		block = {'height': self.height,
 			'previous_hash': self.previous_hash,

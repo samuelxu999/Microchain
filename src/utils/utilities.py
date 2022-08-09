@@ -14,6 +14,7 @@ import hashlib
 import json
 import pickle
 import glob, os, fnmatch
+from merklelib import MerkleTree, jsonify as merkle_jsonify
 
 '''
 FileUtil class for handling file data
@@ -335,3 +336,18 @@ class FuncUtil(object):
 	@staticmethod
 	def hashfunc_sha1(data_value):
 		return hashlib.sha1(data_value).hexdigest()
+
+	## get merkle tree root hash given order transactions
+	@staticmethod
+	def merkle_root(dict_transactions):
+		## build a Merkle tree of dict_transactions 
+		tx_HMT = MerkleTree(dict_transactions, FuncUtil.hashfunc_sha256)
+
+		## calculate merkle tree root hash
+		if(len(tx_HMT)==0):
+			merkle_root_hash = 0
+		else:
+			tree_struct=merkle_jsonify(tx_HMT)
+			json_tree = TypesUtil.string_to_json(tree_struct)
+			merkle_root_hash = json_tree['name']
+		return merkle_root_hash

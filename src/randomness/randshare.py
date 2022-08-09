@@ -28,23 +28,50 @@ class RandOP(Enum):
     RandVote = 2
     RandRecovered = 3
 
-class RundShare_Daemon(object):
-	def __init__(self):
-		# Instantiate the Wallet
+
+class RandShare(object):
+	def __init__(self, daemon=True):
+		## Instantiate the Wallet
 		self.wallet = Wallet()
 		self.wallet.load_accounts()
-		
+
 		## Instantiate the Peer Nodes management adapter
 		self.peer_nodes = Nodes(db_file = PEERS_DATABASE)
 		self.peer_nodes.load_ByAddress()
-		
-		self.randomshare_cmd = 0
-		# define a thread to handle received messages by executing process_msg()
-		self.randomshare_thread = threading.Thread(target=self.process_randomshare, args=())
-		# Set as daemon thread
-		self.randomshare_thread.daemon = True
-		# Start the daemonized method execution
-		self.randomshare_thread.start() 
+
+		## get account data
+		account_data = self.wallet.accounts[0]
+		self.key_numbers={}
+		## get key_numbers from saved account_data
+		load_public_key_bytes = TypesUtil.hex_to_string(account_data['public_key'])
+		load_publick_key=Crypto_RSA.load_public_key(load_public_key_bytes)
+
+		## genereate key pairs numbers
+		public_numbers = load_publick_key.public_numbers()
+
+		# add public numbers
+		self.p=public_numbers.n
+		self.e=public_numbers.e
+		self.key_size=load_publick_key.key_size
+
+		## poly parameter size should be no more than key_size/2
+		self.poly_max = pow(2, (self.key_size/2) )-1
+		self.s = PVSS.randnt(self.poly_max)
+
+		## set <n, t> for shares
+		nodes = self.peer_nodes.get_nodelist()
+		self.n = len(nodes)
+		self.t = math.ceil(2*self.n/3)
+
+		## ------------------------ Instantiate randomshare daemon ----------------------------------
+		if(daemon):
+			self.randomshare_cmd = 0
+			## define a thread to handle received messages by executing process_msg()
+			self.randomshare_thread = threading.Thread(target=self.process_randomshare, args=())
+			## Set as daemon thread
+			self.randomshare_thread.daemon = True
+			## Start the daemonized method execution
+			self.randomshare_thread.start() 
 
 	def set_cmd(self, randshare_cmd):
 		self.randomshare_cmd = randshare_cmd
@@ -61,6 +88,11 @@ class RundShare_Daemon(object):
 				idle_time+=0.1
 				if(idle_time>1.0):
 					idle_time=1.0
+				## refresh <n, t> given peer_nodes
+				self.peer_nodes.load_ByAddress()
+				self.n = len(self.peer_nodes.get_nodelist())
+				self.t = math.ceil(2*self.n/3)
+				# log.info("Update randshare: <n-{}, t-{}>".format(self.n, self.t))
 				time.sleep(idle_time)
 				continue
 			
@@ -115,42 +147,6 @@ class RundShare_Daemon(object):
 				FileUtil.save_testlog('test_results', 'exec_cachevote_shares.log', format(exec_time*1000, '.3f'))
 
 			self.randomshare_cmd=0 
-
-
-
-class RandShare(object):
-	def __init__(self):
-		## Instantiate the Wallet
-		self.wallet = Wallet()
-		self.wallet.load_accounts()
-
-		## Instantiate the Peer Nodes management adapter
-		self.peer_nodes = Nodes(db_file = PEERS_DATABASE)
-		self.peer_nodes.load_ByAddress()
-
-		## get account data
-		account_data = self.wallet.accounts[0]
-		self.key_numbers={}
-		## get key_numbers from saved account_data
-		load_public_key_bytes = TypesUtil.hex_to_string(account_data['public_key'])
-		load_publick_key=Crypto_RSA.load_public_key(load_public_key_bytes)
-
-		## genereate key pairs numbers
-		public_numbers = load_publick_key.public_numbers()
-
-		# add public numbers
-		self.p=public_numbers.n
-		self.e=public_numbers.e
-		self.key_size=load_publick_key.key_size
-
-		## poly parameter size should be no more than key_size/2
-		self.poly_max = pow(2, (self.key_size/2) )-1
-		self.s = PVSS.randnt(self.poly_max)
-
-		## set <n, t> for shares
-		nodes = self.peer_nodes.get_nodelist()
-		self.n = len(nodes)
-		self.t = math.ceil(2*self.n/3)
 
 	def print_config(self):
 		#list account address

@@ -29,38 +29,36 @@ from consensus.block import Block
 from consensus.validator import Validator
 from consensus.consensus import *
 from utils.service_api import SrvAPI
-from randomness.randshare import RandShare, RandOP, RundShare_Daemon
+from randomness.randshare import RandShare, RandOP
 
 logger = logging.getLogger(__name__)
 
 def build_tx(tx_json):
-
-	#----------------- test transaction --------------------
+	'''
+	Build a transaction that encapsulate a json style value
+	'''
+	## use validator's account
 	sender = myblockchain.wallet.accounts[0]
 
-	# generate transaction
+	## input head information of a tx
 	sender_address = sender['address']
 	sender_private_key = sender['private_key']
 	recipient_address = sender['address']
 
+	## get time stamp
 	time_stamp = time.time()
+
+	## covert tx_json to string format
 	tx_str = TypesUtil.json_to_string(tx_json)
-	# value = TypesUtil.string_to_bytes(tx_str)
-	# value = TypesUtil.string_to_hex(tx_str)
-	value = tx_str
 
-	mytransaction = Transaction(sender_address, sender_private_key, recipient_address, time_stamp, value)
+	## construct a tx object
+	mytransaction = Transaction(sender_address, sender_private_key, recipient_address, time_stamp, tx_str)
 
-	# sign transaction
-	sign_data = mytransaction.sign('samuelxu999')
-
-	# verify transaction
-	dict_transaction = Transaction.get_dict(mytransaction.sender_address, 
-	                                        mytransaction.recipient_address,
-	                                        mytransaction.time_stamp,
-	                                        mytransaction.value)
-	#send transaction
+	## convert tx object to json format
 	transaction_json = mytransaction.to_json()
+
+	## sign transaction and  add signature 
+	sign_data = mytransaction.sign('samuelxu999')
 	transaction_json['signature']=TypesUtil.string_to_hex(sign_data)
 
 	return transaction_json
@@ -94,33 +92,20 @@ def validator_status():
 	response = myblockchain.get_status()
 	return jsonify(response), 200
 
+# ================================ Transaction RPC handler==================================
 @app.route('/test/transaction/query', methods=['GET'])
 def query_transaction():
-	# parse data from request.data
+	## parse data from request.data
 	req_data=TypesUtil.bytes_to_string(request.data)
 
-	tx_json=json.loads(req_data)
+	tx_hash=json.loads(req_data)
 
-	if(tx_json=='{}'):
-		abort(401, {'error': 'No transaction data'})
-
-	tx_valid = True
-	# logger.info( "tx_data: {}".format(tx_json))
-	tx_value = TypesUtil.json_to_string(tx_json)
-
-	# -------------- duplicate tx_data in block, discard it ------------------
-	response = {}
-	myblockchain.load_chain()
-	for block in myblockchain.chain:
-		for tx in block['transactions']:
-			if(tx_value==tx['value']):
-				response = tx['value']
-				break
+	response = myblockchain.query_tx(tx_hash)
 
 	return jsonify(response), 200
 
-@app.route('/test/transaction/commit', methods=['POST'])
-def commit_transaction():
+@app.route('/test/transaction/submit', methods=['POST'])
+def submit_transaction():
 	# parse data from request.data
 	req_data=TypesUtil.bytes_to_string(request.data)
 
@@ -129,35 +114,17 @@ def commit_transaction():
 	if(tx_json=='{}'):
 		abort(401, {'error': 'No transaction data'})
 
-	tx_valid = True
-	# logger.info( "tx_data: {}".format(tx_json))
-	tx_value = TypesUtil.json_to_string(tx_json)
-	# ------------- duplicate tx_value in tx pool, discard it -----------------
-	for tx in myblockchain.transactions:
-		if(tx_value == tx['value']):
-			tx_valid = False
-			break
-
-	# -------------- duplicate tx_data in block, discard it ------------------
-	myblockchain.load_chain()
-	for block in myblockchain.chain:
-		for tx in block['transactions']:
-			if(tx_value==tx['value']):
-				tx_valid = False
-				break
-
 	respose_json = {}
-	if(tx_valid):
-		# build transaction data
-		transaction_json=build_tx(tx_json)
-		# broadcast transaction to peer nodes
-		SrvAPI.broadcast_POST(myblockchain.peer_nodes.get_nodelist(), 
-							transaction_json, '/test/transaction/verify')
-		respose_json['Status'] = tx_valid
-	else:
-		respose_json['Status'] = "{}: Duplicated tx.".format(tx_valid)
-		
-	return jsonify({'request_transaction': respose_json}), 201
+
+	## build transaction data
+	transaction_json=build_tx(tx_json)
+
+	## broadcast transaction to peer nodes
+	SrvAPI.broadcast_POST(myblockchain.peer_nodes.get_nodelist(), 
+						transaction_json, '/test/transaction/verify')
+
+	## return tx hash	
+	return jsonify({'submit_transaction': transaction_json['hash']}), 201
 
 #GET req
 @app.route('/test/transaction/verify', methods=['POST'])
@@ -213,13 +180,14 @@ def get_transactions():
 
 @app.route('/test/chain/get', methods=['GET'])
 def full_chain():
-	myblockchain.load_chain()
+	json_blocks = myblockchain.load_chain()
 	response = {
-	    'chain': myblockchain.chain,
-	    'length': len(myblockchain.chain),
+	    'chain': json_blocks,
+	    'length': len(json_blocks)
 	}
 	return jsonify(response), 200
 
+## ================================ Mining RPC handler==================================
 @app.route('/test/chain/checkhead', methods=['GET'])
 def check_head():
 	myblockchain.fix_processed_head()
@@ -241,6 +209,7 @@ def mine_block():
 
 		response = {
 			'message': "New Block Forged",
+			'hash': new_block['hash'],
 			'sender_address': new_block['sender_address'],
 			'signature': new_block['signature'],
 			'hash': new_block['hash'],
@@ -254,6 +223,7 @@ def mine_block():
 	
 	return jsonify(response), 200
 
+## ================================ Node RPC handler==================================
 @app.route('/test/p2p/neighbors', methods=['GET'])
 def p2p_neighbors():
 	neighbors = my_p2p.get_neighbors()
@@ -362,6 +332,18 @@ def remove_verifynode():
 	myblockchain.verify_nodes.load_ByAddress()
 	return jsonify({'remove verify node': json_node['address']}), 201
 
+## ================================ Block RPC handler==================================
+@app.route('/test/block/query', methods=['GET'])
+def query_block():
+	# parse data from request.data
+	req_data=TypesUtil.bytes_to_string(request.data)
+
+	block_hash=json.loads(req_data)
+
+	response = myblockchain.get_block(block_hash)
+
+	return jsonify(response), 200
+
 @app.route('/test/block/verify', methods=['POST'])
 def verify_block():
 	# parse data from request.data
@@ -378,6 +360,7 @@ def verify_block():
 
 	return jsonify({'verify_block': verify_result}), 201
 
+## ================================ Vote RPC handler==================================
 @app.route('/test/block/vote', methods=['GET'])
 def vote_block():
 	json_block = myblockchain.processed_head
@@ -455,7 +438,7 @@ def fetch_randshare():
 # request for share from peers and cache to local
 @app.route('/test/randshare/cachefetched', methods=['GET'])
 def cachefetched_randshare():
-	randshare_daemon.set_cmd(1)
+	myrandshare.set_cmd(1)
 	return jsonify({'cachefetched_randshare': 'Succeed!'}), 200
 
 # verify share and proof 
@@ -481,7 +464,7 @@ def fetch_vote_randshare():
 # retrive vote shares from peers and locally cache for verify vote 
 @app.route('/test/randshare/cachevote', methods=['GET'])
 def cache_vote_randshare():
-	randshare_daemon.set_cmd(2)
+	myrandshare.set_cmd(2)
 	return jsonify({'vote_randshare': 'Succeed!'}), 200
 
 def disp_randomshare(json_shares):
@@ -517,6 +500,7 @@ def disp_randomshare(json_shares):
 		for share_proof in share_proofs:
 			logger.info('    {}'.format(share_proof))
 
+## ================================ Private functions ==================================
 def new_account():
 	## Instantiate the Wallet
 	mywallet = Wallet()
@@ -643,7 +627,7 @@ if __name__ == '__main__':
 		# json_sharesInfo=RandShare.load_sharesInfo()
 		# # display random shares
 		# disp_randomshare(json_sharesInfo)
-		randshare_daemon = RundShare_Daemon()
+		# randshare_daemon = RundShare_Daemon()
 
 		## ------------------------ Instantiate p2p server as thread ------------------------------
 		base_account = myblockchain.wallet.accounts[0]

@@ -14,8 +14,13 @@ TEST_STAKE_WEIGHT = 1				# unit PoS stake weight
 TEST_STAKE_SUM = 3					# Sum of PoS stakes
 
 CHAIN_DATA_DIR = 'chaindata'		# local chain database dir
+
+TX_DATA = "tx_db"					# local tx database file name
+TX_TABLE = "TX_table"				# tx data table name
+
 BLOCKCHAIN_DATA = "chain_db"		# local chain database file name
 CHAIN_TABLE = "Block_table"			# chain data table name
+
 CHAIN_INFO = "chain_info.json"		# chain information file name (.json)
 VOTER_DATA = "voter_db"				# local voter database file name
 
@@ -30,3 +35,5 @@ RANDSHARE_INFO = "randshare_info.json"					# random PVSS node share information 
 RANDSHARE_HOST = "randshare_host.json"					# random PVSS host share information file name (.json)
 RANDSHARE_RECOVERED = "randshare_recovered.json"		# random PVSS recoverd shares information file name (.json)
 RANDSHARE_VOTE = "randshare_vote.json"					# random PVSS shares vote information file name (.json)
+
+SWARM_SERVER = "swarm_server.json"		# smearm service nodes data file name
