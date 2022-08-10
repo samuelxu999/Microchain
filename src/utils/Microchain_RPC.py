@@ -68,31 +68,7 @@ class Microchain_RPC(object):
 		self.verify_nodes = Nodes(db_file = VERIFY_DATABASE)
 		self.verify_nodes.load_ByAddress()
 
-	# =========================== client side REST API ==================================
-	def run_consensus(self, target_address, exec_consensus, isBroadcast=False):
-		json_msg={}
-		json_msg['consensus_run']=exec_consensus
-
-		if(not isBroadcast):
-			json_response=SrvAPI.POST('http://'+target_address+'/test/consensus/run', json_msg)
-			json_response = {'run_consensus': target_address, 'status': json_msg['consensus_run']}
-		else:
-			SrvAPI.broadcast_POST(self.peer_nodes.get_nodelist(), json_msg, '/test/consensus/run', True)
-			json_response = {'run_consensus': 'broadcast', 'status': json_msg['consensus_run']}
-		logger.info(json_response)
-
-	def validator_getinfo(self, target_address, isBroadcast=False):
-		info_list = []
-		if(not isBroadcast):
-			json_response = SrvAPI.GET('http://'+target_address+'/test/validator/getinfo')
-			info_list.append(json_response)
-		else:
-			for node in self.peer_nodes.get_nodelist():
-				json_node = TypesUtil.string_to_json(node)
-				json_response = SrvAPI.GET('http://'+json_node['node_url']+'/test/validator/getinfo')
-				info_list.append(json_response)
-		return info_list
-
+	## =========================== client side REST API ==================================
 	def launch_txs(self, thread_num, tx_size):
 		## Instantiate mypeer_nodes using deepcopy of self.peer_nodes
 		mypeer_nodes = copy.deepcopy(self.peer_nodes)
@@ -145,6 +121,11 @@ class Microchain_RPC(object):
 		json_response=SrvAPI.GET('http://'+target_address+'/test/block/query', block_hash)
 		return json_response
 
+	def get_chain(self, target_address):
+		json_response=SrvAPI.GET('http://'+target_address+'/test/chain/get')
+		return json_response
+
+	## --------------------- consensus functions ----------------------
 	def start_mining(self, target_address, isBroadcast=False):
 		if(not isBroadcast):
 			json_response=SrvAPI.GET('http://'+target_address+'/test/mining')
@@ -162,6 +143,39 @@ class Microchain_RPC(object):
 			json_response = {'verify_vote': 'broadcast'}
 		logger.info(json_response)
 
+	def check_head(self, target_address, isBroadcast=False):
+		if(not isBroadcast):
+			json_response=SrvAPI.GET('http://'+target_address+'/test/chain/checkhead')
+		else:
+			SrvAPI.broadcast_GET(self.peer_nodes.get_nodelist(), '/test/chain/checkhead', True)
+			json_response = {'Reorganize processed_head': 'broadcast'}
+		logger.info(json_response)
+
+	def run_consensus(self, target_address, exec_consensus, isBroadcast=False):
+		json_msg={}
+		json_msg['consensus_run']=exec_consensus
+
+		if(not isBroadcast):
+			json_response=SrvAPI.POST('http://'+target_address+'/test/consensus/run', json_msg)
+			json_response = {'run_consensus': target_address, 'status': json_msg['consensus_run']}
+		else:
+			SrvAPI.broadcast_POST(self.peer_nodes.get_nodelist(), json_msg, '/test/consensus/run', True)
+			json_response = {'run_consensus': 'broadcast', 'status': json_msg['consensus_run']}
+		logger.info(json_response)
+
+	def validator_getinfo(self, target_address, isBroadcast=False):
+		info_list = []
+		if(not isBroadcast):
+			json_response = SrvAPI.GET('http://'+target_address+'/test/validator/getinfo')
+			info_list.append(json_response)
+		else:
+			for node in self.peer_nodes.get_nodelist():
+				json_node = TypesUtil.string_to_json(node)
+				json_response = SrvAPI.GET('http://'+json_node['node_url']+'/test/validator/getinfo')
+				info_list.append(json_response)
+		return info_list
+
+	## --------------------- peers function ----------------------
 	def get_neighbors(self, target_address):
 		json_response=SrvAPI.GET('http://'+target_address+'/test/p2p/neighbors')
 		return json_response
@@ -253,14 +267,6 @@ class Microchain_RPC(object):
 					logger.info("access {} failed.".format(target_node))
 					pass
 
-	def get_chain(self, target_address):
-		json_response=SrvAPI.GET('http://'+target_address+'/test/chain/get')
-		return json_response
-
-	def check_head(self):
-		SrvAPI.broadcast_GET(self.peer_nodes.get_nodelist(), '/test/chain/checkhead')
-		json_response = {'Reorganize processed_head': 'broadcast'}
-
 	## ================================ randomshare client API =================================
 	def create_randshare(self, target_address, isBroadcast=False):
 		if(not isBroadcast):
@@ -327,7 +333,7 @@ class Microchain_RPC(object):
 		# update host shares 
 		RandShare.save_sharesInfo(recovered_shares, RandOP.RandRecovered)
 
-	# request for vote shares from peers and cache to local 
+	## request for vote shares from peers and cache to local 
 	def cache_vote_shares(self, target_address):
 		# read cached randshare
 		vote_shares=RandShare.load_sharesInfo(RandOP.RandVote)
@@ -340,7 +346,7 @@ class Microchain_RPC(object):
 		# update host shares 
 		RandShare.save_sharesInfo(vote_shares, RandOP.RandVote)
 
-	# test recovered shares
+	## test recovered shares
 	def recovered_shares(self, host_address):		
 		# read cached randshare
 		recovered_shares=RandShare.load_sharesInfo(RandOP.RandRecovered)
@@ -366,7 +372,7 @@ class Microchain_RPC(object):
 		# print('secret recovered from node shares:', secret)
 		return secret
 
-	# test new random generator
+	## test new random generator
 	def new_random(self, ls_secret):
 		# get host account information
 		json_nodes=self.wallet.accounts[0]

@@ -67,7 +67,7 @@ def Epoch_validator(target_address, op_status, tx_size, tx_count, phase_delay=BO
 
 	## S3: fix head of epoch 
 	start_time=time.time()   
-	Microchain_client.check_head()
+	Microchain_client.check_head(target_address, True)
 	exec_time=time.time()-start_time
 	ls_time_exec.append(format(exec_time*1000, '.3f'))
 
@@ -427,7 +427,7 @@ if __name__ == "__main__":
 		elif(op_status == 2):
 			Microchain_client.start_mining(target_address, True)
 		elif(op_status == 3):
-			Microchain_client.check_head()
+			Microchain_client.check_head(target_address, True)
 		elif(op_status == 4):
 			Microchain_client.start_voting(target_address, True)
 		elif(op_status == 210):

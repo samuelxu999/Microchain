@@ -33,36 +33,6 @@ from randomness.randshare import RandShare, RandOP
 
 logger = logging.getLogger(__name__)
 
-def build_tx(tx_json):
-	'''
-	Build a transaction that encapsulate a json style value
-	'''
-	## use validator's account
-	sender = myblockchain.wallet.accounts[0]
-
-	## input head information of a tx
-	sender_address = sender['address']
-	sender_private_key = sender['private_key']
-	recipient_address = sender['address']
-
-	## get time stamp
-	time_stamp = time.time()
-
-	## covert tx_json to string format
-	tx_str = TypesUtil.json_to_string(tx_json)
-
-	## construct a tx object
-	mytransaction = Transaction(sender_address, sender_private_key, recipient_address, time_stamp, tx_str)
-
-	## convert tx object to json format
-	transaction_json = mytransaction.to_json()
-
-	## sign transaction and  add signature 
-	sign_data = mytransaction.sign('samuelxu999')
-	transaction_json['signature']=TypesUtil.string_to_hex(sign_data)
-
-	return transaction_json
-
 # ================================= Instantiate the server =====================================
 app = Flask(__name__)
 #CORS(app)
@@ -93,9 +63,21 @@ def validator_status():
 	return jsonify(response), 200
 
 # ================================ Transaction RPC handler==================================
+@app.route('/test/transactions/get', methods=['GET'])
+def get_transactions():
+    '''
+    get transactions from local tx pool
+    '''
+    transactions = myblockchain.transactions
+
+    response = {'transactions': transactions}
+    return jsonify(response), 200
+
 @app.route('/test/transaction/query', methods=['GET'])
 def query_transaction():
-	## parse data from request.data
+	'''
+	query transaction from ledger (chain)
+	'''
 	req_data=TypesUtil.bytes_to_string(request.data)
 
 	tx_hash=json.loads(req_data)
@@ -106,7 +88,9 @@ def query_transaction():
 
 @app.route('/test/transaction/submit', methods=['POST'])
 def submit_transaction():
-	# parse data from request.data
+	'''
+	submit tx_data to ledger (chain)
+	'''
 	req_data=TypesUtil.bytes_to_string(request.data)
 
 	tx_json=json.loads(req_data)
@@ -116,7 +100,7 @@ def submit_transaction():
 
 	respose_json = {}
 
-	## build transaction data
+	## build transaction data from a client
 	transaction_json=build_tx(tx_json)
 
 	## broadcast transaction to peer nodes
@@ -129,6 +113,9 @@ def submit_transaction():
 #GET req
 @app.route('/test/transaction/verify', methods=['POST'])
 def verify_transaction():
+	'''
+	Verify a received tx from peers.
+	'''
 	## 1) parse data from request.data
 	req_data=TypesUtil.bytes_to_string(request.data)
 
@@ -154,6 +141,9 @@ def verify_transaction():
 #GET req
 @app.route('/test/transaction/broadcast', methods=['POST'])
 def broadcast_transaction():
+	'''
+	broadcast a tx to peers
+	'''
 	## 1) parse data from request.data
 	req_data=TypesUtil.bytes_to_string(request.data)
 	
@@ -170,16 +160,11 @@ def broadcast_transaction():
 
 	return jsonify({'broadcast_transaction': 'Succeed!'}), 201
 
-@app.route('/test/transactions/get', methods=['GET'])
-def get_transactions():
-    # Get transactions from transactions pool
-    transactions = myblockchain.transactions
-
-    response = {'transactions': transactions}
-    return jsonify(response), 200
-
 @app.route('/test/chain/get', methods=['GET'])
 def full_chain():
+	'''
+	Get latest blocks (default 10) from ledger (chain)
+	'''
 	json_blocks = myblockchain.load_chain()
 	response = {
 	    'chain': json_blocks,
@@ -188,14 +173,11 @@ def full_chain():
 	return jsonify(response), 200
 
 ## ================================ Mining RPC handler==================================
-@app.route('/test/chain/checkhead', methods=['GET'])
-def check_head():
-	myblockchain.fix_processed_head()
-
-	return jsonify({'Reorganize processed_head': myblockchain.processed_head}), 200
-
 @app.route('/test/mining', methods=['GET'])
 def mine_block():
+	'''
+	Mine a candidate block given a block proposal round
+	'''
 	start_time=time.time()
 	new_block=myblockchain.mine_block()
 	exec_time=time.time()-start_time
@@ -222,6 +204,15 @@ def mine_block():
 		response = { 'message': "Empty Block Forged, not broadcast."}		
 	
 	return jsonify(response), 200
+
+@app.route('/test/chain/checkhead', methods=['GET'])
+def check_head():
+	'''
+	Fix the head block given a block proposal round
+	'''
+	myblockchain.fix_processed_head()
+
+	return jsonify({'Reorganize processed_head': myblockchain.processed_head}), 200
 
 ## ================================ Node RPC handler==================================
 @app.route('/test/p2p/neighbors', methods=['GET'])
@@ -501,6 +492,36 @@ def disp_randomshare(json_shares):
 			logger.info('    {}'.format(share_proof))
 
 ## ================================ Private functions ==================================
+def build_tx(tx_json):
+	'''
+	Build a transaction that encapsulate a json style value
+	'''
+	## use validator's account
+	sender = myblockchain.wallet.accounts[0]
+
+	## input head information of a tx
+	sender_address = sender['address']
+	sender_private_key = sender['private_key']
+	recipient_address = sender['address']
+
+	## get time stamp
+	time_stamp = time.time()
+
+	## covert tx_json to string format
+	tx_str = TypesUtil.json_to_string(tx_json)
+
+	## construct a tx object
+	mytransaction = Transaction(sender_address, sender_private_key, recipient_address, time_stamp, tx_str)
+
+	## convert tx object to json format
+	transaction_json = mytransaction.to_json()
+
+	## sign transaction and  add signature 
+	sign_data = mytransaction.sign('samuelxu999')
+	transaction_json['signature']=TypesUtil.string_to_hex(sign_data)
+
+	return transaction_json
+
 def new_account():
 	## Instantiate the Wallet
 	mywallet = Wallet()
@@ -525,7 +546,7 @@ def static_node():
 	static_nodes.load_node()
 
 	## load test node information from local 'static-nodes.json'
-	json_nodes = FileUtil.JSON_load('static-nodes.json')
+	json_nodes = FileUtil.JSON_load('../config/static-nodes.json')
 
 	## case 2) add all nodes
 	for (node_name, node_data) in json_nodes.items():
@@ -580,6 +601,7 @@ def define_and_get_arguments(args=sys.argv[1:]):
 
 	return args
 
+## ****************************** Main function ***********************************
 if __name__ == '__main__':
 	FORMAT = "%(asctime)s %(levelname)s %(filename)s(l:%(lineno)d) - %(message)s"
 	# FORMAT = "%(asctime)s %(levelname)s | %(message)s"
