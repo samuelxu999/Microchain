@@ -452,7 +452,7 @@ if __name__ == "__main__":
 			disp_chaindata(target_address, True)
 		elif(op_status == 23):
 			count_tx_size(target_address)
-		elif(op_status == 212):
+		elif(op_status == 24):
 			count_vote_size(target_address)
 		elif(op_status == 9):
 			Microchain_client.run_consensus(target_address, True, True)

@@ -96,6 +96,77 @@ def query_checkpoint_netInfo(isDisplay=False):
 
 	return json_checkpoints
 
+# ====================================== validator test ==================================
+def Epoch_Test(target_address, op_status, tx_size, tx_count, phase_delay):
+	'''
+	This test network latency for one epoch life time:
+	'''
+	## Define ls_time_exec to save executing time to log
+	ls_time_exec=[]
+
+	## S1: send test transactions
+	start_time=time.time()
+	# for tps_round in range(tx_count):
+	if(op_status==1):
+		## build a dummy json_tx for test.
+		json_tx={}
+		json_tx['name']='Samuel'
+		json_tx['age']=28
+		ret_msg = Client_instace.submit_tx(target_address, json_tx)
+		logger.info(ret_msg)
+	else:
+		Client_instace.submit_txs(tx_count, tx_size)
+	exec_time=time.time()-start_time
+	ls_time_exec.append(format(exec_time*1000, '.3f'))
+
+	time.sleep(phase_delay)
+
+	## S2: start mining 
+	start_time=time.time()   
+	Client_instace.exec_mining()
+	exec_time=time.time()-start_time
+	ls_time_exec.append(format(exec_time*1000, '.3f'))
+
+	time.sleep(phase_delay)
+
+	## S3: fix head of epoch 
+	start_time=time.time()   
+	Client_instace.exec_check_head()
+	exec_time=time.time()-start_time
+	ls_time_exec.append(format(exec_time*1000, '.3f'))
+
+	time.sleep(phase_delay)
+
+	## S4: voting block to finalize chain
+	start_time=time.time() 
+	Client_instace.exec_voting()
+	exec_time=time.time()-start_time
+	ls_time_exec.append(format(exec_time*1000, '.3f'))
+
+	logger.info("txs: {}    mining: {}    fix_head: {}    vote: {}\n".format(ls_time_exec[0],
+										ls_time_exec[1], ls_time_exec[2], ls_time_exec[3]))
+	## Prepare log messgae
+	str_time_exec=" ".join(ls_time_exec)
+	## Save to *.log file
+	FileUtil.save_testlog('test_results', 'exec_time.log', str_time_exec)
+
+def show_tx_size(target_address):
+	json_response = Client_instace.query_ledger(target_address)
+	chain_data = json_response['chain']
+	chain_length = json_response['length']
+	logger.info('Chain length: {}'.format(chain_length))
+	## get the latest unempty block
+	for block in reversed(chain_data):
+		if(block['transactions']!=[]): 
+			blk_str = TypesUtil.json_to_string(block)  
+			logger.info('Block size: {} Bytes'.format(len( blk_str.encode('utf-8') ))) 
+			logger.info('transactions count: {}'.format(len( block['transactions'] )))  
+
+			tx=block['transactions'][0]
+			tx_str=TypesUtil.json_to_string(tx)
+			logger.info('Tx size: {} Bytes'.format(len( tx_str.encode('utf-8') )))
+			break
+
 def define_and_get_arguments(args=sys.argv[1:]):
 	parser = argparse.ArgumentParser(description="Run websocket client.")
 	
@@ -177,13 +248,22 @@ if __name__ == "__main__":
 			for blk in ledger_data['chain']:
 				logger.info(blk)
 			logger.info('Length: {}'.format(ledger_data['length']))
+		elif(op_status == 8):
+			show_tx_size(target_address)
 		else:
 			# display nodes
 			for node in Client_instace.nodes:
 				logger.info(node)
 
 	elif(test_func == 1):
-		pass
+		for x in range(test_run):
+			logger.info("Test run:{}".format(x+1))
+			Epoch_Test(target_address, op_status, tx_size, tx_thread, 5)
+			time.sleep(wait_interval)
+		## display checkpoint status.
+		json_checkpoints = query_checkpoint_netInfo(False)
+		for _item, _value in json_checkpoints.items():
+			logger.info("{}: {}    {}".format(_item, _value[0], _value[1]))
 	elif(test_func == 2):
 		if(op_status == 10):
 			## build a dummy json_tx for test.
@@ -202,7 +282,6 @@ if __name__ == "__main__":
 		elif(op_status == 4):
 			Client_instace.exec_voting()
 		else:
-			# get checkpoint after execution
 			json_checkpoints = query_checkpoint_netInfo(False)
 			for _item, _value in json_checkpoints.items():
 				logger.info("{}: {}    {}".format(_item, _value[0], _value[1]))
