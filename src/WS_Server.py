@@ -132,9 +132,9 @@ def verify_transaction():
 	exec_time=time.time()-start_time
 	FileUtil.save_testlog('test_results', 'exec_verify_tx.log', format(exec_time*1000, '.3f'))
 
-	if(verify_data==True):
-		## 5) forward unseen tx to peer nodes.
-		SrvAPI.broadcast_POST(myblockchain.peer_nodes.get_nodelist(), transaction_json, '/test/transaction/verify')
+	# if(verify_data==True):
+	# 	## 5) forward unseen tx to peer nodes.
+	# 	SrvAPI.broadcast_POST(myblockchain.peer_nodes.get_nodelist(), transaction_json, '/test/transaction/verify')
 	
 	return jsonify({'verify_transaction': verify_data}), 201
 
