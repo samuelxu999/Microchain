@@ -11,6 +11,7 @@ Created on August.10, 2022
 '''
 import argparse
 import sys
+import os
 import time
 import logging
 import asyncio
@@ -181,6 +182,39 @@ def show_tx_size(target_address):
 			logger.info('Tx size: {} Bytes'.format(len( tx_str.encode('utf-8') )))
 			break
 
+## evaluation on how long to submit tx and commit it on ledger.
+def submit_tx_evaluate(target_address, tx_size):
+	tx_time = 0.0
+
+	## using random byte string for value of tx; value can be any bytes string.
+	json_tx={}
+	json_tx['data']=TypesUtil.string_to_hex(os.urandom(tx_size)) 
+
+	## submit tx and get tx_hash
+	tx_hash = Client_instace.submit_tx(target_address, json_tx)['submit_transaction']
+	commit_block =''
+
+	time.sleep(1)
+
+	logger.info("wait until tx:{} is committed...\n".format(tx_hash))
+	start_time=time.time()
+	while(True):
+		list_tx = Client_instace.query_tx(target_address, tx_hash)
+
+		if(list_tx[0][3]!='0'):
+			commit_block = list_tx[0][3]
+			break
+
+		time.sleep(0.5)
+		tx_time +=0.5
+		if(tx_time>=30):
+			logger.info("Timeout, tx commit fail.") 
+			break
+
+	exec_time=time.time()-start_time
+	logger.info("tx is committed in block {}, time: {:.3f}\n".format(commit_block, exec_time, '.3f')) 
+	FileUtil.save_testlog('test_results', 'exec_tx_commit.log', format(exec_time, '.3f'))
+
 def define_and_get_arguments(args=sys.argv[1:]):
 	parser = argparse.ArgumentParser(description="Run websocket client.")
 	
@@ -272,7 +306,11 @@ if __name__ == "__main__":
 	elif(test_func == 1):
 		for x in range(test_run):
 			logger.info("Test run:{}".format(x+1))
-			Epoch_Test(target_address, op_status, tx_size, tx_thread, wait_interval)
+			if(op_status==2):
+				submit_tx_evaluate(target_address, tx_size)
+			else:
+				Epoch_Test(target_address, op_status, tx_size, tx_thread, wait_interval)
+		
 		## display checkpoint status.
 		json_checkpoints = query_checkpoint_netInfo(False)
 		for _item, _value in json_checkpoints.items():
@@ -288,6 +326,8 @@ if __name__ == "__main__":
 		elif(op_status == 11):
 			## throughput test based on tps, random distributed among nodes
 			Client_instace.submit_txs(tx_thread, tx_size)
+		elif(op_status == 12):
+			submit_tx_evaluate(target_address, tx_size)
 		elif(op_status == 2):
 			Client_instace.exec_mining()
 		elif(op_status == 3):
