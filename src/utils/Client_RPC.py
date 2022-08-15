@@ -207,7 +207,81 @@ class Client_RPC(object):
 
 		logger.info('exec_voting by nodes:{}'.format(exec_nodes))
 
+	def start_consensus(self):
+		headers = {'Content-Type' : 'application/json'}
+		exec_nodes = []
+
+		json_msg={}
+		json_msg['consensus_run']=True
+
+		## Create thread pool
+		threads_pool = []
+		i=0
+		for node in self.nodes:
+			node_url = node[0]+':808'+str(node[1])[-1]
+			api_url = 'http://' + node_url + '/test/consensus/run'
+			exec_nodes.append(node_url)
+
+			i+=1
+			# Create new threads
+			p_thread = ReqThread(i, 1, [api_url, json_msg, headers])
+
+			# append to threads pool
+			threads_pool.append(p_thread)
+
+			# The start() method starts a thread by calling the run method.
+			p_thread.start()
+
+
+		# The join() waits for all threads to terminate.
+		for p_thread in threads_pool:
+			p_thread.join()
+
+		logger.info('start_consensus by nodes:{}'.format(exec_nodes))
+
 	def query_validators(self):
+		'''
+		query all validators information and return a queue list
+		'''
+		## Create queue to save results
+		ret_queue = queue.Queue()
+		## Create thread pool
+		threads_pool = []
+		## Create a list to save status from validators
+		json_status = []
+
+		headers = {'Content-Type' : 'application/json'}
+
+		## 1) For each node and assign querying task to a QueryThread
+		for node in self.nodes:
+			node_url = node[0]+':808'+str(node[1])[-1]
+			api_url = 'http://' + node_url + '/test/validator/getinfo'
+			node_address = node_url
+			## Create new threads for tx
+			p_thread = QueryThread( [ret_queue, node_address, api_url, headers] )
+
+			## append to threads pool
+			threads_pool.append(p_thread)
+
+			## The start() method starts a thread by calling the run method.
+			p_thread.start()
+
+		# 2) The join() waits for all threads to terminate.
+		for p_thread in threads_pool:
+			p_thread.join()
+
+		# 3) get all results from queue
+		while not ret_queue.empty():
+			## q_data is used to save json response from GET
+			q_data = ret_queue.get()
+			json_status.append(q_data)
+			# json_status[q_data['address']]={}
+			# json_status[q_data['address']]['consensus_run']=q_data['consensus_run']
+			# json_status[q_data['address']]['consensus_status']=q_data['consensus_status']
+
+		return json_status
+
+	def query_validators_status(self):
 		'''
 		query all validators status and return a queue list
 		'''
@@ -223,7 +297,7 @@ class Client_RPC(object):
 		## 1) For each node and assign querying task to a QueryThread
 		for node in self.nodes:
 			node_url = node[0]+':808'+str(node[1])[-1]
-			api_url = 'http://' + node_url + '/test/validator/getinfo'
+			api_url = 'http://' + node_url + '/test/validator/status'
 			node_address = node_url
 			## Create new threads for tx
 			p_thread = QueryThread( [ret_queue, node_address, api_url, headers] )

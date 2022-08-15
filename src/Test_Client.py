@@ -96,6 +96,18 @@ def query_checkpoint_netInfo(isDisplay=False):
 
 	return json_checkpoints
 
+def query_validator_status():
+	## get validators status in net.
+	validators_status = Client_instace.query_validators_status()
+	
+	for status_data in validators_status:
+		# if(node_status['consensus_status']!=4):
+		# 	unconditional_nodes.append(node)
+		logger.info("address:{}    consensus_run: {}     consensus_status: {}".format(status_data['address'], 
+					status_data['consensus_run'], status_data['consensus_status']))
+
+	# logger.info("Non-syn node: {}".format(unconditional_nodes))
+
 # ====================================== validator test ==================================
 def Epoch_Test(target_address, op_status, tx_size, tx_count, phase_delay):
 	'''
@@ -142,6 +154,8 @@ def Epoch_Test(target_address, op_status, tx_size, tx_count, phase_delay):
 	Client_instace.exec_voting()
 	exec_time=time.time()-start_time
 	ls_time_exec.append(format(exec_time*1000, '.3f'))
+
+	time.sleep(phase_delay)
 
 	logger.info("txs: {}    mining: {}    fix_head: {}    vote: {}\n".format(ls_time_exec[0],
 										ls_time_exec[1], ls_time_exec[2], ls_time_exec[3]))
@@ -258,8 +272,7 @@ if __name__ == "__main__":
 	elif(test_func == 1):
 		for x in range(test_run):
 			logger.info("Test run:{}".format(x+1))
-			Epoch_Test(target_address, op_status, tx_size, tx_thread, 5)
-			time.sleep(wait_interval)
+			Epoch_Test(target_address, op_status, tx_size, tx_thread, wait_interval)
 		## display checkpoint status.
 		json_checkpoints = query_checkpoint_netInfo(False)
 		for _item, _value in json_checkpoints.items():
@@ -281,6 +294,10 @@ if __name__ == "__main__":
 			Client_instace.exec_check_head()
 		elif(op_status == 4):
 			Client_instace.exec_voting()
+		elif(op_status == 9):
+			Client_instace.start_consensus()
+		elif(op_status == 90):
+			query_validator_status()
 		else:
 			json_checkpoints = query_checkpoint_netInfo(False)
 			for _item, _value in json_checkpoints.items():

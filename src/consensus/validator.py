@@ -185,6 +185,10 @@ class Validator():
 		self.consensus_thread.daemon = True
 		## Start the daemonized method execution
 		self.consensus_thread.start()
+		## Indicate current consensus status: 
+		## 0-ENF proposal; 1-ENF-mining; 2-fix head; 
+		## 3-voting-based finality; 4-synchronization
+		self.statusConsensus = 0 
 
 		## ------------------------ Instantiate the Microchain_RPC ----------------------------------
 		self.RPC_client = Microchain_RPC(keystore="keystore", 
@@ -352,33 +356,33 @@ class Validator():
 				json_head=self.processed_head
 				logger.info("Consensus run at height: {}    status: {}".format(json_head['height'], 
 																			self.runConsensus))
-				# ------------S1: execute proof-of-work to mine new block--------------------
+				## ------------S1: execute proof-of-work to mine new block--------------------
 				start_time=time.time()
 				new_block=self.mine_block()
 				exec_time=time.time()-start_time
 				FileUtil.save_testlog('test_results', 'exec_mining.log', format(exec_time*1000, '.3f'))
 				
-				# broadcast proposed block to peer nodes
+				## broadcast proposed block to peer nodes
 				if( (self.consensus==ConsensusType.PoW) or 
 					(not Block.isEmptyBlock(new_block)) ):
 					SrvAPI.broadcast_POST(self.peer_nodes.get_nodelist(), new_block, '/test/block/verify')
 				time.sleep(self.phase_delay*1.5)
 
-				# ------------S2: fix head of current block generation epoch ----------------
+				## ------------S2: fix head of current block generation epoch ----------------
 				self.fix_processed_head()
 				time.sleep(self.phase_delay)
 
-				# ------------S3: voting block to finalize chain ----------------------------
+				## ------------S3: voting block to finalize chain ----------------------------
 				json_head= self.processed_head
 
-				# only vote if current height arrive multiple of EPOCH_SIZE
+				## only vote if current height arrive multiple of EPOCH_SIZE
 				if( (json_head['height'] % self.block_epoch) == 0):
 					vote_data = self.vote_checkpoint(json_head)	
 					SrvAPI.broadcast_POST(self.peer_nodes.get_nodelist(), vote_data, '/test/vote/verify')
 					pause_epoch+=1
 					time.sleep(self.phase_delay*3)
 			
-				# if pause_epoch arrives threshold. stop consensus for synchronization
+				## if pause_epoch arrives threshold. stop consensus for synchronization
 				if(pause_epoch==self.pause_epoch):
 					self.runConsensus=False
 					logger.info("Consensus run status: {}".format(self.runConsensus))
@@ -640,7 +644,7 @@ class Validator():
 		'''
 		validator_status = {}
 		validator_status['consensus_run'] = self.runConsensus
-		# validator_status['consensus_status'] = self.statusConsensus
+		validator_status['consensus_status'] = self.statusConsensus
 
 		return validator_status
 
