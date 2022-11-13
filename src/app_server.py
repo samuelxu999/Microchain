@@ -31,7 +31,6 @@ app = Flask(__name__)
 @app.route('/')
 def info():
     ## query information of neighbors
-    # target_address = '128.226.77.143:30180'
     target_address = args.bootstrapnode
     neighbors = Client_instace.query_neighbors(target_address)['neighbors']
 
@@ -53,6 +52,29 @@ def info():
 
 
     return render_template('info.html', posts = [ls_peers, len(ls_peers)])
+
+@app.route('/validator', methods=['GET', 'POST'])
+def validator():
+    ret_posts = ['NULL']
+    ## get params from request
+    if request.method == 'POST':
+        node_url = request.form.get('node_url')
+        ret_posts[0]=node_url
+        
+        ## get validator information
+        _validator = Client_instace.query_validator(node_url)
+
+        ret_posts.append(_validator)
+
+        ## get vote list
+        ls_vote = []
+        for source, value in _validator['vote_count'].items():
+            for target, vote in value.items():
+                ls_vote.append([source, target, vote])
+
+        ret_posts.append(ls_vote)
+
+    return render_template('validator.html', posts = ret_posts)
 
 def define_and_get_arguments(args=sys.argv[1:]):
     parser = ArgumentParser(description="Run microchain websocket server.")

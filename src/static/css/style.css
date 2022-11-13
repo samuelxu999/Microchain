@@ -56,3 +56,14 @@ table tbody tr {
 table tbody tr:nth-child(odd) {
     background-color: #ffffff;
 }
+
+/* form style */
+label {
+    display: block;
+    font: 1rem 'Fira Sans', sans-serif;
+}
+
+input,
+label {
+    margin: .4rem 0;
+}
