@@ -8,7 +8,6 @@ Created on Nov.11, 2022
 @TaskDescription: This module provide application server side api
 '''
 
-
 import sys
 import time
 import datetime
@@ -20,17 +19,13 @@ import socket
 from flask import Flask, jsonify, render_template
 from flask import abort,make_response,request
 from argparse import ArgumentParser
-
 from utils.utilities import TypesUtil, FileUtil
 from utils.Client_RPC import Client_RPC
-
-
 
 logger = logging.getLogger(__name__)
 
 # ================================= Instantiate the server =====================================
 app = Flask(__name__)
-#CORS(app)
 
 #===================================== Web App handler ===================================
 @app.route('/')
@@ -46,13 +41,18 @@ def info():
         node_info={}
         node_info['url']="{}:80{}".format(node[0], str(node[1])[-2:])
 
+        ## get account address
         _account = Client_instace.query_account(node_info['url'])['info']
         node_info['account']=str(_account['address'])
+
+        ## get validator information
+        _validator = Client_instace.query_validator(node_info['url'])
+        node_info['node_id']=str(_validator['node_id'])
 
         ls_peers.append(node_info)
 
 
-    return render_template('info.html', posts = ls_peers)
+    return render_template('info.html', posts = [ls_peers, len(ls_peers)])
 
 def define_and_get_arguments(args=sys.argv[1:]):
     parser = ArgumentParser(description="Run microchain websocket server.")
@@ -83,6 +83,7 @@ if __name__ == '__main__':
     ## get arguments
     args = define_and_get_arguments()
 
+    ## initialize Client_RPC instance
     Client_instace = Client_RPC(args.bootstrapnode)
 
     ## -------------------------------- run app server ----------------------------------------

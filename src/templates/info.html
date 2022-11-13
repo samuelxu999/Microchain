@@ -1,17 +1,27 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <link rel="stylesheet" href="{{ url_for('static', filename= 'css/style.css') }}">
-    <title>Microchain Center</title>
-</head>
-<body>
-   <h1>Welcome to Microchain dashboard</h1>
-    {% for post in posts %}
-        <a href="#">
-            <h2>Account:{{ post['account'] }}, Url:{{ post['url'] }}</h2>
-            <!-- <h2>IP:{{ post['ip'] }}</h2> -->
-        </a>
-    {% endfor %}
-</body>
-</html>
+<!-- extended from base template -->
+{% extends 'base.html' %}
+
+{% block content %}
+   <h1>{% block title %} Welcome to Microchain Dashboard {% endblock %}</h1>
+   <div>
+      <h3>Total nodes: {{posts[1]}}</h3>
+      <table>
+         <thead>
+            <tr>
+               <td>Node ID</td>
+               <td>Account Address</td>
+               <td>URL Address</td>
+            </tr>
+         </thead>
+         <tbody>
+         {% for post in posts[0] %}
+            <tr>
+               <td>{{ post['node_id'] }}</td>
+               <td>{{ post['account'] }}</td>
+               <td>{{ post['url'] }}</td>
+            </tr>
+         {% endfor %}
+         </tbody>
+      </table>
+   </div>
+{% endblock %}
