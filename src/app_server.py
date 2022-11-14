@@ -16,6 +16,8 @@ import threading
 import logging
 import asyncio
 import socket
+import random
+
 from flask import Flask, jsonify, render_template
 from flask import abort,make_response,request
 from argparse import ArgumentParser
@@ -75,6 +77,58 @@ def validator():
         ret_posts.append(ls_vote)
 
     return render_template('validator.html', posts = ret_posts)
+
+@app.route('/transaction', methods=['GET', 'POST'])
+def transaction():
+    ret_posts = ['NULL']
+    ## get params from request
+    if request.method == 'POST':
+        tx_hash = request.form.get('tx_hash')
+
+        if(tx_hash!=""):
+            ret_posts[0]=tx_hash
+        
+            ## random choose a node for target_address
+            list_nodes = Client_instace.nodes
+            len_nodes = len(list_nodes)
+            node_idx = random.randint(0,len_nodes-1)
+            target_address = list_nodes[node_idx][0]+':808'+str(list_nodes[node_idx][1])[-1]
+
+            ret_posts.append(target_address)
+
+            ## get transaction information
+            ret_tx = Client_instace.query_tx(target_address, tx_hash)
+
+            ret_posts.append(len(ret_tx))
+            if(len(ret_tx)!=0):
+                ret_posts.append([ret_tx[0][3], TypesUtil.string_to_json(ret_tx[0][2])])
+
+    return render_template('transaction.html', posts = ret_posts)
+
+@app.route('/block', methods=['GET', 'POST'])
+def block():
+    ret_posts = ['NULL']
+    ## get params from request
+    if request.method == 'POST':
+        block_hash = request.form.get('block_hash')
+
+        if(block_hash!=""):
+            ret_posts[0]=block_hash
+        
+            ## random choose a node for target_address
+            list_nodes = Client_instace.nodes
+            len_nodes = len(list_nodes)
+            node_idx = random.randint(0,len_nodes-1)
+            target_address = list_nodes[node_idx][0]+':808'+str(list_nodes[node_idx][1])[-1]
+
+            ret_posts.append(target_address)
+
+            ## get block information
+            json_block = Client_instace.query_blk(target_address, block_hash)
+
+            ret_posts.append(json_block)
+
+    return render_template('block.html', posts = ret_posts)
 
 def define_and_get_arguments(args=sys.argv[1:]):
     parser = ArgumentParser(description="Run microchain websocket server.")

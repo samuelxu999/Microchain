@@ -14,36 +14,30 @@
       {% if  posts[0]!='NULL' %}
          <h3>Basic Information</h3>
          <table>
-            <thead>
-               <tr>
-                  <td>Node ID</td>
-                  <td>URL Address</td>
-                  <td>Committee Size</td>
-               </tr>
-            </thead>
             <tbody>
                <tr>
-                  <td>{{ posts[1]['node_id'] }}</td>
-                  <td>{{ posts[0] }}</td>
-                  <td>{{ posts[1]['committee_size'] }}</td>
+                  <th>Node ID</th><td>{{ posts[1]['node_id'] }}</td>
+               </tr>
+               <tr>
+                  <th>URL Address</th><td>{{ posts[0] }}</td>
+               </tr>
+               <tr>
+                  <th>Committee Size</th><td>{{ posts[1]['committee_size'] }}</td>
                </tr>
             </tbody>
          </table>
 
          <h3>Current Ledger Status</h3>
          <table>
-            <thead>
-               <tr>
-                  <td>Finalized Block Checkpoint</td>
-                  <td>Committed Block Checkpoint</td>
-                  <td>Processed Block Checkpoint</td>
-               </tr>
-            </thead>
             <tbody>
                <tr>
-                  <td>{{ posts[1]['highest_finalized_checkpoint'] }}</td>
-                  <td>{{ posts[1]['highest_justified_checkpoint'] }}</td>
-                  <td>{{ posts[1]['processed_head'] }}</td>
+                  <th>Finalized Block Checkpoint</th><td>{{ posts[1]['highest_finalized_checkpoint'] }}</td>
+               </tr>
+               <tr>
+                  <th>Committed Block Checkpoint</th><td>{{ posts[1]['highest_justified_checkpoint'] }}</td>
+               </tr>
+               <tr>
+                  <th>Processed Block Checkpoint</th><td>{{ posts[1]['processed_head'] }}</td>
                </tr>
             </tbody>
          </table>
