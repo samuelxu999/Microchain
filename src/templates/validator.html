@@ -11,7 +11,11 @@
       </div>
    </form>
    <div>
-      {% if  posts[0]!='NULL' %}
+      {% if  posts[0]=='NULL' %}
+         <h3>Node url cannot be empty</h3>
+      {% elif posts[0]=='Fail' %}
+         <h3>Node url {{ posts[0] }} is not available, message: {{ posts[1] }}</h3>
+      {% else %}
          <h3>Basic Information</h3>
          <table>
             <tbody>

@@ -63,18 +63,25 @@ def validator():
         node_url = request.form.get('node_url')
         ret_posts[0]=node_url
         
-        ## get validator information
-        _validator = Client_instace.query_validator(node_url)
+        if(ret_posts[0]==''):
+            ret_posts[0]='NULL'
+        else:
+            try:
+                ## get validator information
+                _validator = Client_instace.query_validator(node_url)
 
-        ret_posts.append(_validator)
+                ret_posts.append(_validator)
 
-        ## get vote list
-        ls_vote = []
-        for source, value in _validator['vote_count'].items():
-            for target, vote in value.items():
-                ls_vote.append([source, target, vote])
+                ## get vote list
+                ls_vote = []
+                for source, value in _validator['vote_count'].items():
+                    for target, vote in value.items():
+                        ls_vote.append([source, target, vote])
 
-        ret_posts.append(ls_vote)
+                ret_posts.append(ls_vote)
+            except Exception as e:
+                ret_posts[0] = 'Fail'
+                ret_posts.append(str(e))
 
     return render_template('validator.html', posts = ret_posts)
 
