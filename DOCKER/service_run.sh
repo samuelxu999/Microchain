@@ -69,5 +69,5 @@ elif [ "show" == "$OPERATION" ]; then
 	docker container ls
 ## show usage
 else
-	echo "Usage $0 -operation(start|stop|show) -image_type(x86|arm) -container_name(microchain-node@id) -rpc_port(30180) -port(8080) -bootstrapnode(ip:port)"
+	echo "Usage $0 -operation(start|stop|show) -container_name(microchain-node@id) -image_type(x86|arm) -rpc_port(30180) -port(8080) -bootstrapnode(ip:port)"
 fi
