@@ -37,6 +37,9 @@ if  [ "start" == "$OPERATION" ]; then
 	elif [ "arm" == $IMAGE_TYPE ]; then
 		echo "Use armv7l version"
 		IMAGE_FILE="samuelxu999/microchain_node:armv7l"
+	elif [ "mac" == $IMAGE_TYPE ]; then
+		echo "Use mac version"
+		IMAGE_FILE="samuelxu999/microchain_node:mac"
 	else
 		echo "Not support image version."
 		exit 0
