@@ -50,6 +50,9 @@ def info():
         _validator = Client_instace.query_validator(node_info['url'])
         node_info['node_id']=str(_validator['node_id'])
 
+        ## update reputation information
+        node_info['reputation']=str( random.randint(0,10))
+
         ls_peers.append(node_info)
 
 
