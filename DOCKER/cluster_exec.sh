@@ -18,6 +18,7 @@ if  [ "start" == "$OPERATION" ] ; then
 ## Stop cluster
 elif [ "stop" == "$OPERATION" ] ; then
 	echo "Stop cluster"
+	sudo ./docker_exec.sh microchain_bootstrap docker "rm -rf nodedata"
 	sudo ./service_run.sh stop microchain_bootstrap
 	sudo ./service_run.sh stop microchain_node1
 	sudo ./service_run.sh stop microchain_node2
